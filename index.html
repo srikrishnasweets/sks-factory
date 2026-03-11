@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SKS Factory</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg-1: #f4f8ff;
+      --bg-2: #e9f1ff;
+      --panel: #ffffff;
+      --ink: #0f223a;
+      --muted: #556981;
+      --line: #c9d8eb;
+      --accent: #1e6fd9;
+      --accent-dark: #1452a8;
+      --ok: #137333;
+      --danger: #b42318;
+      --shadow: 0 8px 20px rgba(22, 56, 94, .14);
+
+      --card-idle-bg: #fff7ed;
+      --card-idle-border: #fb923c;
+      --card-idle-text: #7c2d12;
+      --card-warn-bg: #fefce8;
+      --card-warn-border: #eab308;
+      --card-warn-text: #713f12;
+      --card-done-bg: #f0fdf4;
+      --card-done-border: #22c55e;
+      --card-done-text: #14532d;
+      --card-late-bg: #fff1f2;
+      --card-late-border: #ef4444;
+      --card-late-text: #7f1d1d;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: "DM Sans", "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 0%, #d5e6ff 0%, transparent 35%),
+        radial-gradient(circle at 90% 90%, #dfe9ff 0%, transparent 30%),
+        linear-gradient(125deg, var(--bg-1), var(--bg-2));
+      min-height: 100dvh;
+      padding-bottom: 40px;
+    }
+
+    .hero {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid var(--line);
+      padding: 16px 24px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .hero-title {
+      margin: 0;
+      color: var(--accent);
+      font-size: 24px;
+      font-weight: 800;
+    }
+
+    .status-top {
+      font-size: 13px;
+      font-weight: 700;
+      color: #27476a;
+      padding: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #f4f8ff;
+    }
+
+    .status-top.err {
+      color: var(--danger);
+      border-color: #f9a8a8;
+      background: #fff5f5;
+    }
+
+    .content {
+      padding: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* Custom KPI Cards */
+    .dashboard-top {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+
+    .row-cards {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .dark-card {
+      flex: 1 1 30%; /* Start by allowing 3 items to fit evenly */
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 20px;
+      color: #123a67;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(22, 56, 94, .08);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    
+    .dark-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(22, 56, 94, .12);
+    }
+    
+    .dark-card.left-align {
+      text-align: left;
+    }
+
+    /* Mobile specifics to keep 3 cards per row */
+    @media (max-width: 768px) {
+      .content { padding: 12px; }
+      .row-cards { gap: 6px; }
+      .dark-card {
+        padding: 10px 6px;
+        flex: 1 1 30%; /* Force minimum 3 items across */
+        min-width: 0; /* Prevent flex items from overflowing horizontally */
+        border-radius: 8px;
+      }
+      .dark-card-title {
+        font-size: 10px !important;
+        margin-bottom: 4px !important;
+      }
+      .dark-card-value {
+        font-size: 16px !important;
+        margin-bottom: 4px !important;
+      }
+      .dark-card-sub, .dark-card-metric {
+        font-size: 10px !important;
+        margin-bottom: 4px !important;
+      }
+      .dark-card-metric span.label {
+        font-size: 9px !important;
+      }
+    }
+
+    .dark-card-title {
+      font-size: 14px;
+      font-weight: 800;
+      margin-bottom: 8px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .dark-card-value {
+      font-size: 32px;
+      font-weight: 900;
+      margin-bottom: 8px;
+      color: var(--accent);
+      line-height: 1;
+    }
+
+    .dark-card-sub {
+      font-size: 14px;
+      font-weight: 700;
+      color: #314d6b;
+    }
+
+    .dark-card-metric {
+      font-size: 14px;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #314d6b;
+    }
+
+    .dark-card-metric span.label {
+      color: var(--muted);
+      text-transform: uppercase;
+      font-size: 12px;
+      font-weight: 800;
+      margin-right: 4px;
+    }
+
+    .dark-card-metric span.ach-green {
+      color: #22c55e;
+      font-weight: 700;
+      background: transparent;
+      padding: 0;
+    }
+    .dark-card-metric span.ach-yellow {
+      color: #eab308;
+      font-weight: 700;
+      background: transparent;
+      padding: 0;
+    }
+    .dark-card-metric span.ach-red {
+      color: #ef4444;
+      font-weight: 700;
+      background: transparent;
+      padding: 0;
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 24px;
+      margin-bottom: 15px;
+    }
+
+    .section-title {
+      margin: 0 0 16px;
+      font-size: 20px;
+      font-weight: 800;
+      color: #123a67;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Tables */
+    .table-responsive {
+      overflow-x: auto;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    th {
+      background: #f8fbff;
+      color: #123a67;
+      font-weight: 800;
+      font-size: 13px;
+      padding: 14px 16px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      border-bottom: 2px solid var(--line);
+    }
+
+    td {
+      padding: 14px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      border-bottom: 1px solid var(--line);
+      color: #314d6b;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: #f2f8ff;
+    }
+
+    /* Badge & Classes for Table */
+    .status-badge {
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      display: inline-block;
+      text-align: center;
+      letter-spacing: 0.04em;
+    }
+
+    .status-running {
+      background: var(--card-done-bg);
+      color: var(--card-done-text);
+      border: 1px solid var(--card-done-border);
+    }
+
+    .status-slow {
+      background: var(--card-warn-bg);
+      color: var(--card-warn-text);
+      border: 1px solid var(--card-warn-border);
+    }
+
+    .status-stopped {
+      background: var(--card-late-bg);
+      color: var(--card-late-text);
+      border: 1px solid var(--card-late-border);
+    }
+
+    .status-default {
+      background: var(--card-idle-bg);
+      color: var(--card-idle-text);
+      border: 1px solid var(--card-idle-border);
+    }
+
+    .ach-green { color: #16a34a; font-weight: 900; background: #f0fdf4; padding: 4px 8px; border-radius: 8px; }
+    .ach-yellow { color: #ca8a04; font-weight: 900; background: #fefce8; padding: 4px 8px; border-radius: 8px; }
+    .ach-red { color: #dc2626; font-weight: 900; background: #fff1f2; padding: 4px 8px; border-radius: 8px; }
+    .text-center { text-align: center; }
+
+    /* Animation */
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    .loading-spinner {
+      display: inline-block;
+      width: 14px;
+      height: 14px;
+      border: 2px solid rgba(30,111,217,0.3);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 6px;
+      vertical-align: middle;
+    }
+
+    /* Floating Action Button */
+    .fab {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: var(--accent);
+      color: white;
+      font-size: 24px;
+      border: none;
+      box-shadow: 0 4px 12px rgba(30, 111, 217, 0.4);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s, background 0.2s;
+      z-index: 999;
+    }
+    .fab:hover {
+      transform: scale(1.05);
+      background: var(--accent-dark);
+    }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(15, 34, 58, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s;
+    }
+    .modal-overlay.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .modal-box {
+      background: white;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
+      transform: translateY(20px);
+      transition: transform 0.2s;
+      display: flex;
+      flex-direction: column;
+    }
+    .modal-overlay.active .modal-box {
+      transform: translateY(0);
+    }
+    .modal-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .modal-header h3 { margin: 0; color: #123a67; font-size: 18px; }
+    .modal-close { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--muted); }
+    .modal-body { padding: 20px; }
+    .form-group { margin-bottom: 15px; }
+    .form-group label { display: block; margin-bottom: 6px; font-weight: 700; font-size: 12px; color: var(--muted); text-transform: uppercase; }
+    .form-group select, .form-group input { width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 8px; font-family: inherit; font-size: 14px; }
+    .modal-footer { padding: 16px 20px; border-top: 1px solid var(--line); display: flex; justify-content: flex-end; gap: 10px; background: #f8fbff; border-radius: 0 0 12px 12px; }
+    .btn { padding: 8px 16px; border-radius: 8px; font-weight: 700; cursor: pointer; border: none; font-family: inherit; }
+    .btn-secondary { background: white; border: 1px solid var(--line); color: #123a67; }
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-small { padding: 4px 8px; font-size: 12px; border-radius: 6px; }
+
+    #completeForm .form-group { margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+  <div id="globalBlocker" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;display:none;cursor:not-allowed;background:transparent;"></div>
+
+  <header class="hero">
+    <h1 class="hero-title">SKS Factory</h1>
+    <div id="statusTop" class="status-top">Initializing...</div>
+  </header>
+
+  <main class="content">
+    
+    <!-- Custom KPI section -->
+    <div id="dashboardTop" class="dashboard-top">
+      <!-- Top Row: Production Today, Cutting Today, Packing Today -->
+      <div id="row1" class="row-cards"></div>
+      
+      <!-- Bottom Row: Department Scores -->
+      <div id="row2" class="row-cards"></div>
+    </div>
+
+    <!-- DEPARTMENT TABLES -->
+    <div id="departmentsContainer">
+      <!-- Rendered Dynamically -->
+    </div>
+
+  <!-- Entry Modal -->
+  <button class="fab" onclick="openEntryModal()">+</button>
+
+  <div class="modal-overlay" id="entryModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>New Entry</h3>
+        <button class="modal-close" onclick="closeModal('entryModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Department</label>
+          <select id="deptSelect" onchange="updateDropdowns()">
+            <option value="Cutting Department">Cutting Department</option>
+            <option value="Production Department">Production Department</option>
+            <option value="Packing Department">Packing Department</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Section</label>
+          <select id="sectionSelect"></select>
+        </div>
+        <div class="form-group">
+          <label>Incharge</label>
+          <select id="inchargeSelect"></select>
+        </div>
+        <div class="form-group">
+          <label>Ideal Start (AM/PM)</label>
+          <div style="display: flex; gap: 8px;">
+            <select id="idealStartHour" style="flex: 1;">
+              <option value="" disabled selected>HH</option>
+              <option value="01">01</option>
+              <option value="02">02</option>
+              <option value="03">03</option>
+              <option value="04">04</option>
+              <option value="05">05</option>
+              <option value="06">06</option>
+              <option value="07">07</option>
+              <option value="08">08</option>
+              <option value="09">09</option>
+              <option value="10">10</option>
+              <option value="11">11</option>
+              <option value="12">12</option>
+            </select>
+            <select id="idealStartMinute" style="flex: 1;">
+              <option value="" disabled selected>MM</option>
+              <option value="00">00</option>
+              <option value="05">05</option>
+              <option value="10">10</option>
+              <option value="15">15</option>
+              <option value="20">20</option>
+              <option value="25">25</option>
+              <option value="30">30</option>
+              <option value="35">35</option>
+              <option value="40">40</option>
+              <option value="45">45</option>
+              <option value="50">50</option>
+              <option value="55">55</option>
+            </select>
+            <select id="idealStartAmPm" style="flex: 1;">
+              <option value="AM">AM</option>
+              <option value="PM">PM</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Target</label>
+          <input type="number" id="targetInput" placeholder="Enter target">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('entryModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitNewEntry(this)">Save Entry</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Complete Job Modal -->
+  <div class="modal-overlay" id="completeModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Complete Job</h3>
+        <button class="modal-close" onclick="closeModal('completeModal')">&times;</button>
+      </div>
+      <div class="modal-body" id="completeForm">
+        <div class="form-group">
+          <label>Staff</label>
+          <input type="number" id="staffInput" placeholder="Enter number of staff">
+        </div>
+        <div class="form-group">
+          <label>Output</label>
+          <input type="number" id="outputInput" placeholder="Enter output amount">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('completeModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="submitComplete(this)">Complete</button>
+      </div>
+    </div>
+  </div>
+
+  </main>
+
+  <script>
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwFDnwhS3KrW48EHvE03JBxKnUjUe3eYwt7V8EtymXRzsBgSd440QjzzW8cyRkQl9vkYg/exec";
+    const statusEl = document.getElementById("statusTop");
+    const deptContainer = document.getElementById("departmentsContainer");
+
+    const COLUMNS = [
+      { key: "SECTION", label: "Section" },
+      { key: "INCHARGE", label: "Incharge" },
+      { key: "STAFF", label: "Staff" },
+      { key: "STATUS", label: "Status" },
+      { key: "IDEAL START", label: "Ideal Start", type: 'time' },
+      { key: "ACTUAL START", label: "Actual Start", type: 'time' },
+      { key: "COMPLETED AT", label: "Completed At", type: 'time' },
+      { key: "DURATION", label: "Duration", type: 'duration' },
+      { key: "TARGET", label: "Target" },
+      { key: "OUTPUT", label: "Output" },
+      { key: "SPEED", label: "Speed" },
+      { key: "ACHIEVEMENT", label: "Ach%", type: 'ach' }
+    ];
+
+    function setStatus(text, isError) {
+      statusEl.innerHTML = text;
+      statusEl.className = "status-top" + (isError ? " err" : "");
+    }
+
+    function formatTime(val) {
+      if (!val) return "-";
+      try {
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return val;
+        return d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+      } catch (e) { return val; }
+    }
+
+    function formatDuration(val) {
+      if (!val) return "-";
+      try {
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return val;
+        // Parse time locally into strict HH:mm:ss in IST
+        const istTimeStr = d.toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false });
+        const parts = istTimeStr.split(":");
+        if (parts.length >= 2) {
+            const h = parseInt(parts[0], 10);
+            const m = parseInt(parts[1], 10);
+            return h + "h " + m + "m";
+        }
+        return istTimeStr;
+      } catch (e) { return val; }
+    }
+
+    function getStatusClass(status) {
+      const s = String(status || '').toLowerCase();
+      if (s === "running") return "status-running";
+      if (s === "slow") return "status-slow";
+      if (s === "stopped" || s === "stop") return "status-stopped";
+      return "status-default";
+    }
+
+    function getAchClass(ach) {
+      const num = parseFloat(ach);
+      if (isNaN(num)) return "";
+      if (num >= 100) return "ach-green";
+      if (num >= 80) return "ach-yellow";
+      return "ach-red";
+    }
+
+    function extractNumber(str) {
+      if (typeof str === 'number') return str;
+      if (typeof str !== 'string') return 0;
+      const match = str.match(/[\d.]+/);
+      return match ? parseFloat(match[0]) : 0;
+    }
+
+    function escapeHtml(v) {
+      return String(v == null ? "" : v)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+    }
+
+    async function loadData() {
+      setStatus('<span class="loading-spinner"></span> Updating data...', false);
+      try {
+        const res = await fetch(SCRIPT_URL);
+        const data = await res.json();
+        
+        renderDashboard(data);
+        setStatus('Updated: ' + new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }), false);
+      } catch (e) {
+        console.error("Fetch Error:", e);
+        setStatus("Failed to load data. Waiting for retry...", true);
+      }
+    }
+
+    let actionRowData = null;
+
+    const sectionsMaster = {
+      production: ["Baklava", "Halwa", "Special Milk", "Kaju", "Bengali", "Laddu", "Ghee", "Bites", "Special Kaju", "Milk", "Mysurpa", "Soanpapdi"],
+      packing: ["Line 1", "Line 2", "Line 3", "Line 4"]
+    };
+    const inchargesMaster = {
+      production: ["Bindhesh", "Boopathi", "Devan", "Dhasarathan", "Madav", "Mani", "Muthu Kumaran", "Sabari", "Sandeep", "Santhosh", "Selvam", "Sridhar", "Thiyagarajan"],
+      packing: ["Vedaiyappan", "Madhu"]
+    };
+
+    function updateDropdowns() {
+      const dept = document.getElementById("deptSelect").value;
+      const type = dept.includes("Packing") ? "packing" : "production";
+      
+      const secSel = document.getElementById("sectionSelect");
+      secSel.innerHTML = sectionsMaster[type].map(s => `<option value="${s}">${s}</option>`).join("");
+      
+      const incSel = document.getElementById("inchargeSelect");
+      incSel.innerHTML = inchargesMaster[type].map(i => `<option value="${i}">${i}</option>`).join("");
+    }
+
+    function openEntryModal() {
+      updateDropdowns();
+      document.getElementById("idealStartHour").value = "";
+      document.getElementById("idealStartMinute").value = "";
+      document.getElementById("idealStartAmPm").value = "AM";
+      document.getElementById("targetInput").value = "";
+      document.getElementById("entryModal").classList.add("active");
+    }
+
+    function closeModal(id) {
+      document.getElementById(id).classList.remove("active");
+    }
+
+    async function submitNewEntry(btn) {
+      const h = document.getElementById("idealStartHour").value;
+      const m = document.getElementById("idealStartMinute").value;
+      const ampm = document.getElementById("idealStartAmPm").value;
+
+      if (!h || !m) {
+        alert("Please set the Ideal Start time properly (HH and MM).");
+        return;
+      }
+      
+      const idealStartFormatted = `${h}:${m} ${ampm}`;
+
+      const payload = {
+        action: "create",
+        department: document.getElementById("deptSelect").value,
+        section: document.getElementById("sectionSelect").value,
+        incharge: document.getElementById("inchargeSelect").value,
+        idealStart: idealStartFormatted,
+        target: document.getElementById("targetInput").value
+      };
+      
+      if(!payload.target || !payload.idealStart) {
+        alert("Please fill all fields");
+        return;
+      }
+      
+      btn.disabled = true;
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<span class="loading-spinner" style="border-color: rgba(255,255,255,0.3); border-top-color: white;"></span> Saving...';
+      document.getElementById('globalBlocker').style.display = 'block';
+      setStatus('<span class="loading-spinner"></span> Saving...', false);
+      
+      try {
+        await fetch(SCRIPT_URL, {
+          method: "POST",
+          body: JSON.stringify(payload)
+        });
+        closeModal("entryModal");
+        await loadData();
+      } catch (e) {
+        setStatus("Error saving entry", true);
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        document.getElementById('globalBlocker').style.display = 'none';
+      }
+    }
+
+    async function setStatusRow(btn, deptName, rowIndex, currentStatus) {
+      if (currentStatus === "Not Started") {
+        btn.disabled = true;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="loading-spinner" style="border-color: rgba(255,255,255,0.3); border-top-color: white;"></span> Starting...';
+        document.getElementById('globalBlocker').style.display = 'block';
+        setStatus('<span class="loading-spinner"></span> Starting...', false);
+        try {
+          await fetch(SCRIPT_URL, {
+            method: "POST",
+            body: JSON.stringify({
+              action: "update",
+              department: deptName,
+              rowIndex: rowIndex,
+              updates: { "STATUS": "Start" }
+            })
+          });
+          await loadData();
+        } catch (e) {
+          setStatus("Error starting job", true);
+        } finally {
+          btn.innerHTML = originalText;
+          btn.disabled = false;
+          document.getElementById('globalBlocker').style.display = 'none';
+        }
+      } else if (currentStatus === "Running") {
+        actionRowData = { deptName, rowIndex };
+        document.getElementById("staffInput").value = "";
+        document.getElementById("outputInput").value = "";
+        document.getElementById("completeModal").classList.add("active");
+      }
+    }
+    
+    async function submitComplete(btn) {
+      if (!actionRowData) return;
+      const staff = document.getElementById("staffInput").value;
+      const output = document.getElementById("outputInput").value;
+      if (!output || !staff) {
+        alert("Please enter both staff and output");
+        return;
+      }
+      
+      btn.disabled = true;
+      const originalText = btn.innerHTML;
+      btn.innerHTML = '<span class="loading-spinner" style="border-color: rgba(255,255,255,0.3); border-top-color: white;"></span> Completing...';
+      document.getElementById('globalBlocker').style.display = 'block';
+      setStatus('<span class="loading-spinner"></span> Completing...', false);
+      
+      try {
+        await fetch(SCRIPT_URL, {
+          method: "POST",
+          body: JSON.stringify({
+            action: "update",
+            department: actionRowData.deptName,
+            rowIndex: actionRowData.rowIndex,
+            updates: { "STATUS": "Completed", "STAFF": staff, "OUTPUT": output }
+          })
+        });
+        closeModal("completeModal");
+        await loadData();
+      } catch (e) {
+        setStatus("Error completing job", true);
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        document.getElementById('globalBlocker').style.display = 'none';
+      }
+    }
+
+    function renderDashboard(data) {
+      const row1 = document.getElementById("row1");
+      const row2 = document.getElementById("row2");
+      row1.innerHTML = "";
+      row2.innerHTML = "";
+      deptContainer.innerHTML = "";
+
+      // Convert object to array so we can process it predictably
+      const departments = Object.keys(data);
+      if (departments.length === 0) {
+        deptContainer.innerHTML = "<div class='panel'>No data available.</div>";
+        return;
+      }
+
+      // Hardcode the order requested if they exist
+      const orderedDepts = ["Production Department", "Cutting Department", "Packing Department"];
+      const displayDepts = orderedDepts.filter(d => departments.includes(d));
+      
+      // If none of the specific ones exist, fallback to dynamic iteration
+      const iterationList = displayDepts.length > 0 ? displayDepts : departments;
+
+      iterationList.forEach(deptName => {
+        const deptData = data[deptName] || [];
+        
+        let deptTarget = 0;
+        let deptOutput = 0;
+        let unit = "";
+        let avgSpeed = 0;
+        let speedUnit = "";
+        
+        deptData.forEach(row => {
+          deptTarget += extractNumber(row.TARGET);
+          deptOutput += extractNumber(row.OUTPUT);
+          
+          if(!unit && typeof row.OUTPUT === 'string') {
+              const uMatch = row.OUTPUT.match(/[a-zA-Z]+/g);
+              if(uMatch) unit = uMatch[uMatch.length - 1]; // get 'KG' or 'pcs'
+          }
+
+          if (row.SPEED && row.SPEED !== "-") {
+            avgSpeed = parseFloat(row.SPEED);
+            if(typeof row.SPEED === 'string') {
+              const sMatch = row.SPEED.match(/[a-zA-Z\/]+/g);
+              if (sMatch) speedUnit = sMatch[sMatch.length - 1]; // e.g. kg/hr
+            }
+          }
+        });
+        
+        // Simple heuristic for speed unit if missing
+        if (!speedUnit) {
+          if (unit.toLowerCase().includes("pc")) speedUnit = "pcs/min";
+          else if (unit.toLowerCase().includes("kg")) speedUnit = "kg/hr";
+        }
+
+        const ach = deptTarget > 0 ? Math.round((deptOutput / deptTarget) * 100) : 0;
+        
+        // Shorten the names for the cards
+        let shortName = escapeHtml(deptName).replace(" Department", "");
+
+        // Build Top Row Card (Today)
+        const topCard = document.createElement("div");
+        topCard.className = "dark-card";
+        topCard.innerHTML = `
+          <div class="dark-card-title">${shortName} Today</div>
+          <div class="dark-card-value">${deptOutput} ${unit}</div>
+          <div class="dark-card-sub">Avg ${avgSpeed || '-'} ${speedUnit}</div>
+        `;
+        row1.appendChild(topCard);
+
+        // Build Bottom Row Card (Score)
+        const scoreCard = document.createElement("div");
+        scoreCard.className = "dark-card left-align";
+        scoreCard.innerHTML = `
+          <div class="dark-card-title" style="font-size: 16px; margin-bottom: 12px;">${shortName} Dept Score</div>
+          <div class="dark-card-metric"><span class="label">Output :</span> ${deptOutput} ${unit}</div>
+          <div class="dark-card-metric"><span class="label">Target :</span> ${deptTarget} ${unit}</div>
+          <div class="dark-card-metric" style="margin-top: 2px;"><span class="label">Efficiency :</span> <span class="${getAchClass(ach)}">${ach}%</span></div>
+        `;
+        row2.appendChild(scoreCard);
+
+        // --- 2. Render Table Panel ---
+        const panel = document.createElement("div");
+        panel.className = "panel";
+
+        const title = document.createElement("h2");
+        title.className = "section-title";
+        title.innerHTML = `${escapeHtml(deptName)}`;
+        panel.appendChild(title);
+
+        const tableResp = document.createElement("div");
+        tableResp.className = "table-responsive";
+        
+        const table = document.createElement("table");
+        
+        // Header
+        const thead = document.createElement("thead");
+        const headerRow = document.createElement("tr");
+        COLUMNS.forEach(col => {
+          const th = document.createElement("th");
+          th.textContent = col.label;
+          if(col.key === "STATUS" || col.type === 'ach') th.className = "text-center";
+          headerRow.appendChild(th);
+        });
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+
+        // Body
+        const tbody = document.createElement("tbody");
+        deptData.forEach(row => {
+            const tr = document.createElement("tr");
+            
+            const isPacking = deptName.toLowerCase().includes("packing");
+            const unitStr = isPacking ? " pcs" : " KG";
+            const speedUnitStr = isPacking ? " pcs/min" : " kg/hr";
+            
+            COLUMNS.forEach(col => {
+              const td = document.createElement("td");
+              let val = row[col.key] !== undefined ? row[col.key] : "";
+              
+              if (col.type === 'time') {
+                val = formatTime(val);
+              } else if (col.type === 'duration') {
+                val = formatDuration(val);
+              } else if (col.type === 'ach') {
+                td.className = "text-center " + getAchClass(val);
+                val = val !== "-" ? Math.round(val) + "%" : "-";
+              }
+              
+              if (col.key === "STATUS") {
+                td.className = "text-center";
+                const wrapper = document.createElement("div");
+                wrapper.style.display = "flex";
+                wrapper.style.alignItems = "center";
+                wrapper.style.justifyContent = "center";
+                wrapper.style.gap = "8px";
+                
+                const badge = document.createElement("span");
+                badge.className = "status-badge " + getStatusClass(val);
+                badge.textContent = val;
+                wrapper.appendChild(badge);
+                
+                if (val === "Not Started" || val === "Running") {
+                    const btn = document.createElement("button");
+                    btn.className = "btn btn-primary btn-small";
+                    btn.textContent = val === "Not Started" ? "Start" : "Complete";
+                    btn.onclick = (e) => setStatusRow(e.target, deptName, row._rowIndex, val);
+                    wrapper.appendChild(btn);
+                }
+                
+                td.appendChild(wrapper);
+              } else {
+                if (col.type !== 'ach') {
+                    // Append units dynamically to Target, Output, and Speed
+                    if (val !== "" && val !== "-") {
+                        if (col.key === "TARGET" || col.key === "OUTPUT") {
+                            val = val + unitStr;
+                        } else if (col.key === "SPEED") {
+                            val = val + speedUnitStr;
+                        }
+                    }
+                    td.textContent = val;
+                }
+                else td.textContent = val; // Already set for ach with %
+              }
+              
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+
+        table.appendChild(tbody);
+        tableResp.appendChild(table);
+        panel.appendChild(tableResp);
+        
+        deptContainer.appendChild(panel);
+      });
+    }
+
+    // Auto-refresh every 30 seconds
+    setInterval(loadData, 30000);
+    
+    // Initial load
+    loadData();
+  </script>
+</body>
+</html>
