@@ -7,6 +7,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
   <style>
     :root {
@@ -412,14 +413,71 @@
     .btn-primary { background: var(--accent); color: white; }
     .btn-small { padding: 4px 8px; font-size: 12px; border-radius: 6px; }
 
+
     #completeForm .form-group { margin-bottom: 12px; }
+
+    /* Expand/Collapse Styles */
+    .expand-btn {
+      width: 24px;
+      height: 24px;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      background: white;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      font-weight: bold;
+      color: var(--accent);
+      transition: all 0.2s;
+    }
+    .expand-btn:hover {
+      background: var(--bg-1);
+      border-color: var(--accent);
+    }
+    .details-row {
+      display: none;
+      background: #fcfdfe;
+    }
+    .details-row.active {
+      display: table-row;
+    }
+    .details-container {
+      padding: 12px 24px;
+      border-left: 4px solid var(--accent);
+      margin: 8px 0;
+    }
+    .details-table {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      background: white;
+    }
+    .details-table th {
+      background: #f1f5f9;
+      padding: 8px 12px;
+      font-size: 11px;
+    }
+    .details-table td {
+      padding: 8px 12px;
+      font-size: 12px;
+      border-bottom: 1px solid #f1f5f9;
+    }
   </style>
 </head>
 <body>
   <div id="globalBlocker" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;display:none;cursor:not-allowed;background:transparent;"></div>
 
   <header class="hero">
-    <h1 class="hero-title">SKS Factory</h1>
+    <div style="display: flex; align-items: center; gap: 16px;">
+      <h1 class="hero-title">SKS Factory</h1>
+      <button class="btn btn-primary" onclick="document.getElementById('excelUpload').click()" style="padding: 8px 16px; font-size: 13px;">
+      Upload Excel
+      </button>
+      <input type="file" id="excelUpload" style="display: none;" accept=".xlsx, .xls, .csv" onchange="handleFileUpload(event)">
+    </div>
     <div id="statusTop" class="status-top">Initializing...</div>
   </header>
 
@@ -543,11 +601,12 @@
   </main>
 
   <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwFDnwhS3KrW48EHvE03JBxKnUjUe3eYwt7V8EtymXRzsBgSd440QjzzW8cyRkQl9vkYg/exec";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-unuUSovcTKqsbsEABZUOVNWxEEkuYM4lrSBY9lx-MpKigfpdFF-6bsKAh5HuDDgrSg/exec";
     const statusEl = document.getElementById("statusTop");
     const deptContainer = document.getElementById("departmentsContainer");
 
     const COLUMNS = [
+      { key: "Date", label: "Date", type: 'date' },
       { key: "SECTION", label: "Section" },
       { key: "INCHARGE", label: "Incharge" },
       { key: "STAFF", label: "Staff" },
@@ -593,6 +652,17 @@
       } catch (e) { return val; }
     }
 
+    function formatDateOnly(val) {
+      const d = parseSheetDate(val);
+      if (!d) return "-";
+      return new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Kolkata',
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      }).format(d).replace(/\//g, '-');
+    }
+
     function getStatusClass(status) {
       const s = String(status || '').toLowerCase();
       if (s === "running") return "status-running";
@@ -622,18 +692,399 @@
         .replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
     }
 
+    function getRowValue(row, key) {
+      if (!row || key === undefined || key === null) return "";
+      if (row[key] !== undefined) return row[key];
+      const want = String(key).trim().toLowerCase();
+      const found = Object.keys(row).find(k => String(k).trim().toLowerCase() === want);
+      return found ? row[found] : "";
+    }
+
+    function parseSheetDate(value) {
+      if (!value) return null;
+      if (value instanceof Date && !isNaN(value.getTime())) return value;
+      if (typeof value === "string") {
+        const s = value.trim();
+        const ddmmyyyy = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+        if (ddmmyyyy) {
+          const d = parseInt(ddmmyyyy[1], 10);
+          const m = parseInt(ddmmyyyy[2], 10) - 1;
+          const y = parseInt(ddmmyyyy[3], 10);
+          return new Date(y, m, d);
+        }
+        const slashDate = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+        if (slashDate) {
+          const a = parseInt(slashDate[1], 10);
+          const b = parseInt(slashDate[2], 10);
+          const y = parseInt(slashDate[3], 10);
+          // India-first parsing: prefer DD/MM/YYYY for ambiguous values like 12/3/2026
+          let day = a;
+          let month = b;
+          if (a > 12 && b <= 12) {
+            day = a;
+            month = b;
+          } else if (b > 12 && a <= 12) {
+            day = b;
+            month = a;
+          }
+          return new Date(y, month - 1, day);
+        }
+      }
+      const d = new Date(value);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
+    function getISTDateKey(value) {
+      const d = parseSheetDate(value);
+      if (!d) return "";
+      // en-CA gives YYYY-MM-DD reliably
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(d);
+    }
+
+    function filterTodayRows(data) {
+      const todayKey = new Intl.DateTimeFormat("en-CA", {
+        timeZone: "Asia/Kolkata",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit"
+      }).format(new Date());
+
+      const getRowDateRaw = (row) => {
+        if (!row || typeof row !== "object") return null;
+        const keys = Object.keys(row);
+        const dateKey = keys.find(k => String(k).trim().toLowerCase() === "date");
+        if (dateKey && row[dateKey]) return row[dateKey];
+
+        const fallbackKeys = ["IDEAL START", "ACTUAL START", "COMPLETED AT", "Planned Start", "Actual Start", "Actual End"];
+        for (const fk of fallbackKeys) {
+          if (row[fk]) return row[fk];
+        }
+        return null;
+      };
+
+      const result = {};
+      Object.keys(data || {}).forEach(sheetName => {
+        const rows = Array.isArray(data[sheetName]) ? data[sheetName] : [];
+        result[sheetName] = rows.filter(row => {
+          const raw = getRowDateRaw(row);
+          const rowKey = getISTDateKey(raw);
+          return rowKey && rowKey === todayKey;
+        });
+      });
+      return result;
+    }
+
     async function loadData() {
       setStatus('<span class="loading-spinner"></span> Updating data...', false);
       try {
         const res = await fetch(SCRIPT_URL);
         const data = await res.json();
+        const todayData = filterTodayRows(data);
         
-        renderDashboard(data);
+        renderDashboard(todayData);
         setStatus('Updated: ' + new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }), false);
       } catch (e) {
         console.error("Fetch Error:", e);
         setStatus("Failed to load data. Waiting for retry...", true);
       }
+    }
+
+    function toggleDetailsDynamic(btn, mainRow, lineName, productWiseData) {
+      const normalizeLine = (v) => String(v || "").toLowerCase().replace(/\s+/g, "");
+      const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+      const normalizeQty = (v) => {
+        if (typeof v === "number" && isFinite(v)) return v;
+        if (v instanceof Date && !isNaN(v.getTime())) {
+          if (v.getUTCFullYear() <= 1901) {
+            return Math.max(0, Math.round((v.getTime() - excelEpoch.getTime()) / 86400000));
+          }
+          return 0;
+        }
+        if (typeof v === "string") {
+          const s = v.trim();
+          if (!s) return 0;
+          const d = new Date(s);
+          if (!isNaN(d.getTime()) && d.getUTCFullYear() <= 1901) {
+            return Math.max(0, Math.round((d.getTime() - excelEpoch.getTime()) / 86400000));
+          }
+          const cleaned = s.replace(/,/g, "");
+          const n = Number(cleaned);
+          if (isFinite(n)) return n;
+          const m = cleaned.match(/[\d.]+/);
+          return m ? parseFloat(m[0]) : 0;
+        }
+        return 0;
+      };
+      let subRow = mainRow.nextSibling;
+      if (subRow && subRow.classList && subRow.classList.contains("details-row")) {
+          if (subRow.classList.contains("active")) {
+            subRow.classList.remove("active");
+            btn.textContent = "+";
+          } else {
+            subRow.classList.add("active");
+            btn.textContent = "-";
+          }
+          return;
+      }
+
+      // Create it if it doesn't exist
+      const newSubRow = document.createElement("tr");
+      newSubRow.className = "details-row active";
+      const td = document.createElement("td");
+      td.colSpan = COLUMNS.length;
+      
+      const products = productWiseData.filter(p => normalizeLine(p.Line) === normalizeLine(lineName));
+      
+      let html = '<div class="details-container">';
+      html += '<table class="details-table">';
+      html += '<thead><tr><th>Product</th><th>Target</th><th>Output</th><th>Duration</th><th>Speed</th><th>Ach%</th><th>Ideal Start</th><th>Actual Start</th><th>Actual Completed</th></tr></thead>';
+      html += '<tbody>';
+      
+      if (products.length === 0) {
+        html += '<tr><td colspan="9">No individual product data found</td></tr>';
+      } else {
+        products.forEach(p => {
+          const target = normalizeQty(p.Target);
+          const output = normalizeQty(p.Output);
+          const ach = target > 0 ? Math.round((output / target) * 100) : 0;
+          const idealStartVal = p["Ideal Start"] || p["Planned Start"] || "";
+          html += `<tr>
+            <td>${escapeHtml(p.Product)}</td>
+            <td>${target} pcs</td>
+            <td>${output} pcs</td>
+            <td>${escapeHtml(p.Duration || "-")}</td>
+            <td>${p.Speed || "-"}</td>
+            <td>${ach}%</td>
+            <td>${formatTime(idealStartVal)}</td> 
+            <td>${formatTime(p["Actual Start"])}</td>
+            <td>${formatTime(p["Actual End"])}</td>
+          </tr>`;
+        });
+      }
+      
+      html += '</tbody></table></div>';
+      td.innerHTML = html;
+      newSubRow.appendChild(td);
+      mainRow.parentNode.insertBefore(newSubRow, mainRow.nextSibling);
+      btn.textContent = "-";
+    }
+
+    async function handleFileUpload(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+
+      setStatus('<span class="loading-spinner"></span> Parsing File...', false);
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const data = new Uint8Array(e.target.result);
+          const workbook = XLSX.read(data, { type: 'array', cellDates: true });
+          const firstSheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[firstSheetName];
+          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+
+          if (jsonData.length === 0) {
+            alert("No data found in File");
+            return;
+          }
+
+          const toDate = (val, baseDate = null) => {
+             if (val instanceof Date) return val;
+             if (val === null || val === undefined || val === "") return null;
+
+             // Excel serial date/time (e.g. 0.41 for time-only, 45362 for full date)
+             if (typeof val === "number" && isFinite(val)) {
+               const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+               return new Date(excelEpoch.getTime() + (val * 24 * 60 * 60 * 1000));
+             }
+
+             if (typeof val === "string") {
+               const cleaned = val.trim();
+               if (!cleaned) return null;
+
+               // Time-only values like "9:44", "9:44 am"
+               const timeMatch = cleaned.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+               if (timeMatch) {
+                 const base = baseDate instanceof Date && !isNaN(baseDate.getTime())
+                   ? new Date(baseDate)
+                   : new Date();
+                 let hour = parseInt(timeMatch[1], 10);
+                 const minute = parseInt(timeMatch[2], 10);
+                 const second = parseInt(timeMatch[3] || "0", 10);
+                 const ampm = (timeMatch[4] || "").toUpperCase();
+
+                 if (ampm === "PM" && hour < 12) hour += 12;
+                 if (ampm === "AM" && hour === 12) hour = 0;
+
+                 base.setHours(hour, minute, second, 0);
+                 return base;
+               }
+             }
+
+             const d = new Date(val);
+             return isNaN(d.getTime()) ? null : d;
+          };
+
+          const formatTimeExcel = (date) => {
+            if (!date) return "";
+            return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+          };
+
+          const findVal = (row, possibleKeys) => {
+            const keys = Object.keys(row);
+            for (const pk of possibleKeys) {
+               const match = keys.find(k => k.toLowerCase().trim() === pk.toLowerCase().trim() || k.toLowerCase().trim().includes(pk.toLowerCase().trim()));
+               if (match) return row[match];
+            }
+            return null;
+          };
+
+          // Process and group by Line
+          const groupedData = {};
+          const allProducts = [];
+
+          jsonData.forEach(row => {
+            const line = String(findVal(row, ["Line"]) || "").trim();
+            if (!line) return;
+
+            if (!groupedData[line]) {
+              groupedData[line] = {
+                line: line,
+                totalTarget: 0,
+                totalOutput: 0,
+                totalDurationMs: 0,
+                minIdealStart: null,
+                minActualStart: null,
+                maxActualEnd: null
+              };
+            }
+
+            const rowDate = toDate(findVal(row, ["Date"]));
+            const targetQty = extractNumber(findVal(row, ["Target Qty", "TargetQty", "Target"]));
+            const actualQty = extractNumber(findVal(row, ["Actual Qty", "ActualQty", "Output"]));
+            const idealStart = toDate(findVal(row, ["Plan Start", "Planned Start"]), rowDate);
+            const actualStart = toDate(findVal(row, ["Actual Start"]), rowDate);
+            const actualEnd = toDate(findVal(row, ["Actual End"]), rowDate);
+            const durationVal = findVal(row, ["Actual Duration", "Duration"]);
+
+            let durMs = 0;
+            let durationText = "";
+            if (typeof durationVal === "number" && isFinite(durationVal)) {
+              durMs = durationVal * 24 * 60 * 60 * 1000;
+            } else if (typeof durationVal === "string" && durationVal.trim()) {
+              const d = durationVal.trim();
+              const parts = d.split(":").map(p => parseInt(p, 10));
+              if (parts.length === 3 && parts.every(n => !isNaN(n))) {
+                durMs = ((parts[0] * 3600) + (parts[1] * 60) + parts[2]) * 1000;
+              } else if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                durMs = ((parts[0] * 60) + parts[1]) * 60 * 1000;
+              }
+            } else if (actualStart && actualEnd) {
+              durMs = Math.max(0, actualEnd.getTime() - actualStart.getTime());
+            }
+            if (durMs > 0) {
+              const dh = Math.floor(durMs / 3600000);
+              const dm = Math.floor((durMs % 3600000) / 60000);
+              durationText = `${dh}:${String(dm).padStart(2, "0")}`;
+            } else if (typeof durationVal === "string" && durationVal.trim()) {
+              durationText = durationVal.trim();
+            }
+
+            groupedData[line].totalTarget += targetQty;
+            groupedData[line].totalOutput += actualQty;
+            groupedData[line].totalDurationMs += durMs;
+
+            if (idealStart && (!groupedData[line].minIdealStart || idealStart < groupedData[line].minIdealStart)) {
+              groupedData[line].minIdealStart = idealStart;
+            }
+            if (actualStart && (!groupedData[line].minActualStart || actualStart < groupedData[line].minActualStart)) {
+              groupedData[line].minActualStart = actualStart;
+            }
+            if (actualEnd && (!groupedData[line].maxActualEnd || actualEnd > groupedData[line].maxActualEnd)) {
+              groupedData[line].maxActualEnd = actualEnd;
+            }
+
+            const achProduct = targetQty > 0 ? Math.round((actualQty / targetQty) * 100) : 0;
+            const speedProduct = durMs > 0 ? (actualQty / (durMs / 60000)).toFixed(2) + " pcs/min" : "0";
+
+            // Products for separate sheet
+            allProducts.push({
+              "Line": line,
+              "Product": findVal(row, ["Product Name", "Product", "Group"]) || "-",
+              "Target": targetQty,
+              "Output": actualQty,
+              "Planned Start": idealStart ? idealStart.toISOString() : "",
+              "Ideal Start": idealStart ? idealStart.toISOString() : "",
+              "Duration": durationText,
+              "Speed": speedProduct,
+              "Achievement": achProduct,
+              "Actual Start": actualStart ? actualStart.toISOString() : "",
+              "Actual End": actualEnd ? actualEnd.toISOString() : ""
+            });
+          });
+
+          // Convert grouped regions to final summary payload
+          const summaryEntries = Object.values(groupedData).map(g => {
+            let incharge = "Madhu";
+            if (g.line.includes("3") || g.line.includes("4")) incharge = "Vediyappan";
+
+            const totalDurationMs = g.totalDurationMs;
+            const h = Math.floor(totalDurationMs / 3600000);
+            const m = Math.floor((totalDurationMs % 3600000) / 60000);
+            const durationStr = h + "h " + m + "m";
+            const totalDurationMins = totalDurationMs / 60000;
+
+            const ach = g.totalTarget > 0 ? (g.totalOutput / g.totalTarget) * 100 : 0;
+            const speed = totalDurationMins > 0 ? (g.totalOutput / totalDurationMins).toFixed(2) : 0;
+
+            return {
+              SECTION: g.line,
+              INCHARGE: incharge,
+              STATUS: "Completed",
+              "IDEAL START": g.minIdealStart ? g.minIdealStart.toISOString() : "",
+              "ACTUAL START": g.minActualStart ? g.minActualStart.toISOString() : "",
+              "COMPLETED AT": g.maxActualEnd ? g.maxActualEnd.toISOString() : "",
+              DURATION: durationStr,
+              TARGET: g.totalTarget,
+              OUTPUT: g.totalOutput,
+              SPEED: speed,
+              ACHIEVEMENT: Math.round(ach)
+            };
+          });
+
+          // Upload to Server
+          setStatus('<span class="loading-spinner"></span> Updating Sheets...', false);
+          const response = await fetch(SCRIPT_URL, {
+            method: "POST",
+            body: JSON.stringify({
+              action: "upload_packing",
+              department: "Packing Department",
+              summaryEntries: summaryEntries,
+              productEntries: allProducts
+            })
+          });
+          
+          const resJson = await response.json();
+          if (resJson.success) {
+            setStatus("Data updated in both sheets", false);
+            await loadData();
+          } else {
+            throw new Error(resJson.error || "Upload failed");
+          }
+
+        } catch (err) {
+          console.error(err);
+          setStatus("Error processing: " + err.message, true);
+        } finally {
+          event.target.value = ""; // reset input
+        }
+      };
+      reader.readAsArrayBuffer(file);
     }
 
     let actionRowData = null;
@@ -905,10 +1356,12 @@
             
             COLUMNS.forEach(col => {
               const td = document.createElement("td");
-              let val = row[col.key] !== undefined ? row[col.key] : "";
+              let val = getRowValue(row, col.key);
               
               if (col.type === 'time') {
                 val = formatTime(val);
+              } else if (col.type === 'date') {
+                val = formatDateOnly(val);
               } else if (col.type === 'duration') {
                 val = formatDuration(val);
               } else if (col.type === 'ach') {
@@ -916,7 +1369,25 @@
                 val = val !== "-" ? Math.round(val) + "%" : "-";
               }
               
-              if (col.key === "STATUS") {
+              if (col.key === "SECTION") {
+                const wrapper = document.createElement("div");
+                wrapper.style.display = "flex";
+                wrapper.style.alignItems = "center";
+                wrapper.style.gap = "10px";
+                
+                if (isPacking) {
+                   const btn = document.createElement("button");
+                   btn.className = "expand-btn";
+                   btn.textContent = "+";
+                   btn.onclick = (e) => toggleDetailsDynamic(e.target, tr, val, data["Packing ProductWise"] || []);
+                   wrapper.appendChild(btn);
+                }
+                
+                const span = document.createElement("span");
+                span.textContent = val;
+                wrapper.appendChild(span);
+                td.appendChild(wrapper);
+              } else if (col.key === "STATUS") {
                 td.className = "text-center";
                 const wrapper = document.createElement("div");
                 wrapper.style.display = "flex";
