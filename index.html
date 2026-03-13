@@ -675,6 +675,7 @@
       { key: "IDEAL START", label: "Ideal Start", type: 'time' },
       { key: "ACTUAL START", label: "Actual Start", type: 'time' },
       { key: "COMPLETED AT", label: "Completed At", type: 'time' },
+      { key: "PLANNED DURATION", label: "Planned Duration", type: 'planned_duration' },
       { key: "DURATION", label: "Duration", type: 'duration' },
       { key: "TARGET", label: "Target" },
       { key: "OUTPUT", label: "Output" },
@@ -762,9 +763,9 @@
 
     function parseSheetDate(value) {
       if (!value) return null;
-      if (value instanceof Date && !isNaN(value.getTime())) return value;
       if (typeof value === "string") {
         const s = value.trim();
+        // Expecting DD-MM-YYYY or ISO
         const ddmmyyyy = s.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
         if (ddmmyyyy) {
           const d = parseInt(ddmmyyyy[1], 10);
@@ -772,29 +773,14 @@
           const y = parseInt(ddmmyyyy[3], 10);
           return new Date(y, m, d);
         }
-        const slashDate = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-        if (slashDate) {
-          const a = parseInt(slashDate[1], 10);
-          const b = parseInt(slashDate[2], 10);
-          const y = parseInt(slashDate[3], 10);
-          // India-first parsing: prefer DD/MM/YYYY for ambiguous values like 12/3/2026
-          let day = a;
-          let month = b;
-          if (a > 12 && b <= 12) {
-            day = a;
-            month = b;
-          } else if (b > 12 && a <= 12) {
-            day = b;
-            month = a;
-          }
-          return new Date(y, month - 1, day);
-        }
       }
       const d = new Date(value);
       return isNaN(d.getTime()) ? null : d;
     }
 
     function getISTDateKey(value) {
+      if (!value) return "";
+      if (typeof value === "string" && value.match(/^\d{1,2}-\d{1,2}-\d{4}$/)) return value;
       const d = parseSheetDate(value);
       if (!d) return "";
       const day = String(d.getDate()).padStart(2, '0');
@@ -901,11 +887,11 @@
       
       let html = '<div class="details-container">';
       html += '<table class="details-table">';
-      html += '<thead><tr><th>Product</th><th>Target</th><th>Output</th><th>Duration</th><th>Speed</th><th>Ach%</th><th>Ideal Start</th><th>Actual Start</th><th>Actual Completed</th></tr></thead>';
+      html += '<thead><tr><th>Product</th><th>Target</th><th>Output</th><th>Planned Dur</th><th>Actual Dur</th><th>Speed</th><th>Ach%</th><th>Ideal Start</th><th>Actual Start</th><th>Actual Completed</th></tr></thead>';
       html += '<tbody>';
       
       if (products.length === 0) {
-        html += '<tr><td colspan="9">No individual product data found</td></tr>';
+        html += '<tr><td colspan="10">No individual product data found</td></tr>';
       } else {
         products.forEach(p => {
           const target = normalizeQty(p.Target);
@@ -916,6 +902,7 @@
             <td>${escapeHtml(p.Product)}</td>
             <td>${target} pcs</td>
             <td>${output} pcs</td>
+            <td>${escapeHtml(p["Planned Duration"] || "-")}</td>
             <td>${escapeHtml(p.Duration || "-")}</td>
             <td>${p.Speed || "-"}</td>
             <td>${ach}%</td>
@@ -1020,13 +1007,13 @@
             return null;
           };
 
-          // Detect Production Date from the first valid row
+          // Detect Production Date from the first valid row (standardized String)
           let productionDateStr = "";
           for (let i = 0; i < jsonData.length; i++) {
-            const d = toDate(findVal(jsonData[i], ["Date"]));
-            if (d) {
-              productionDateStr = getISTDateKey(d); // Standardized: DD-MM-YYYY
-              break;
+            const raw = findVal(jsonData[i], ["Date"]);
+            if (raw) {
+              productionDateStr = getISTDateKey(raw);
+              if (productionDateStr) break;
             }
           }
 
@@ -1043,6 +1030,7 @@
                 totalTarget: 0,
                 totalOutput: 0,
                 totalDurationMs: 0,
+                totalPlannedDurationMins: 0,
                 minIdealStart: null,
                 minActualStart: null,
                 maxActualEnd: null
@@ -1056,6 +1044,7 @@
             const actualStart = toDate(findVal(row, ["Actual Start"]), rowDate);
             const actualEnd = toDate(findVal(row, ["Actual End"]), rowDate);
             const durationVal = findVal(row, ["Actual Duration", "Duration"]);
+            const plannedDurationVal = findVal(row, ["Planned Duration (HH:MM)", "Planned Duration"]);
 
             let durMs = 0;
             let durationText = "";
@@ -1072,6 +1061,7 @@
             } else if (actualStart && actualEnd) {
               durMs = Math.max(0, actualEnd.getTime() - actualStart.getTime());
             }
+
             if (durMs > 0) {
               const dh = Math.floor(durMs / 3600000);
               const dm = Math.floor((durMs % 3600000) / 60000);
@@ -1080,9 +1070,22 @@
               durationText = durationVal.trim();
             }
 
+            // Extract Planned Duration
+            let plannedMins = 0;
+            if (typeof plannedDurationVal === "string" && plannedDurationVal.trim()) {
+              const p = plannedDurationVal.trim();
+              const parts = p.split(":").map(x => parseInt(x, 10));
+              if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                plannedMins = (parts[0] * 60) + parts[1];
+              }
+            } else if (typeof plannedDurationVal === "number" && isFinite(plannedDurationVal)) {
+              plannedMins = Math.round(plannedDurationVal * 24 * 60);
+            }
+
             groupedData[line].totalTarget += targetQty;
             groupedData[line].totalOutput += actualQty;
             groupedData[line].totalDurationMs += durMs;
+            groupedData[line].totalPlannedDurationMins += plannedMins;
 
             if (idealStart && (!groupedData[line].minIdealStart || idealStart < groupedData[line].minIdealStart)) {
               groupedData[line].minIdealStart = idealStart;
@@ -1109,7 +1112,8 @@
               "Speed": speedProduct,
               "Achievement": achProduct,
               "Actual Start": actualStart ? actualStart.toISOString() : "",
-              "Actual End": actualEnd ? actualEnd.toISOString() : ""
+              "Actual End": actualEnd ? actualEnd.toISOString() : "",
+              "Planned Duration": plannedMins > 0 ? (Math.floor(plannedMins / 60) + ":" + String(plannedMins % 60).padStart(2, "0")) : ""
             });
           });
 
@@ -1122,6 +1126,10 @@
             const m = Math.floor((totalDurationMs % 3600000) / 60000);
             const durationStr = h + "h " + m + "m";
             const totalDurationMins = totalDurationMs / 60000;
+
+            const plannedH = Math.floor(g.totalPlannedDurationMins / 60);
+            const plannedM = g.totalPlannedDurationMins % 60;
+            const plannedStr = plannedH + "h " + plannedM + "m";
 
             const ach = g.totalTarget > 0 ? (g.totalOutput / g.totalTarget) * 100 : 0;
             const speed = totalDurationMins > 0 ? (g.totalOutput / totalDurationMins).toFixed(2) : 0;
@@ -1138,7 +1146,8 @@
               TARGET: g.totalTarget,
               OUTPUT: g.totalOutput,
               SPEED: speed,
-              ACHIEVEMENT: Math.round(ach)
+              ACHIEVEMENT: Math.round(ach),
+              "PLANNED DURATION": plannedStr
             };
           });
 
@@ -1150,7 +1159,7 @@
               department: "Packing Department",
               summaryEntries: summaryEntries,
               productEntries: allProducts,
-              productionDate: productionDateStr
+              productionDate: productionDateStr // already DD-MM-YYYY
             })
           });
           
@@ -1350,6 +1359,8 @@
         
         let deptTarget = 0;
         let deptOutput = 0;
+        let deptPlannedMins = 0;
+        let deptActualMins = 0;
         let unit = "";
         let avgSpeed = 0;
         let speedUnit = "";
@@ -1357,6 +1368,20 @@
         deptData.forEach(row => {
           deptTarget += extractNumber(row.TARGET);
           deptOutput += extractNumber(row.OUTPUT);
+          
+          // Parse Planned Duration HHh MMm
+          const pdVal = String(getRowValue(row, "PLANNED DURATION") || "");
+          const pdMatch = pdVal.match(/(\d+)h\s*(\d+)m/);
+          if (pdMatch) {
+            deptPlannedMins += (parseInt(pdMatch[1]) * 60) + parseInt(pdMatch[2]);
+          }
+
+          // Parse Duration HHh MMm
+          const adVal = String(getRowValue(row, "DURATION") || "");
+          const adMatch = adVal.match(/(\d+)h\s*(\d+)m/);
+          if (adMatch) {
+            deptActualMins += (parseInt(adMatch[1]) * 60) + parseInt(adMatch[2]);
+          }
           
           if(!unit && typeof row.OUTPUT === 'string') {
               const uMatch = row.OUTPUT.match(/[a-zA-Z]+/g);
@@ -1450,6 +1475,8 @@
                 val = formatDateOnly(val);
               } else if (col.type === 'duration') {
                 val = formatDuration(val);
+              } else if (col.type === 'planned_duration') {
+                val = val ? val : "-";
               } else if (col.type === 'ach') {
                 td.className = "text-center " + getAchClass(val);
                 val = val !== "-" ? Math.round(val) + "%" : "-";
@@ -1533,6 +1560,14 @@
             td.textContent = deptTarget + unitStr;
           } else if (col.key === "OUTPUT") {
             td.textContent = deptOutput + unitStr;
+          } else if (col.key === "PLANNED DURATION") {
+            const h = Math.floor(deptPlannedMins / 60);
+            const m = deptPlannedMins % 60;
+            td.textContent = h > 0 || m > 0 ? (h + "h " + m + "m") : "-";
+          } else if (col.key === "DURATION") {
+            const h = Math.floor(deptActualMins / 60);
+            const m = deptActualMins % 60;
+            td.textContent = h > 0 || m > 0 ? (h + "h " + m + "m") : "-";
           } else if (col.key === "ACHIEVEMENT") {
             td.className = "text-center " + getAchClass(ach);
             td.textContent = ach + "%";
@@ -1550,8 +1585,8 @@
       });
     }
 
-    // Auto-refresh every 30 seconds
-    setInterval(loadData, 30000);
+    // Auto-refresh every 15 minutes
+    setInterval(loadData, 900000);
     
     // Initial load
     loadData();
