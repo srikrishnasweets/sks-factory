@@ -411,7 +411,27 @@
     .btn { padding: 8px 16px; border-radius: 8px; font-weight: 700; cursor: pointer; border: none; font-family: inherit; }
     .btn-secondary { background: white; border: 1px solid var(--line); color: #123a67; }
     .btn-primary { background: var(--accent); color: white; }
+    .date-picker-input {
+      background: #f0f7ff;
+      border: 1px solid #dceeff;
+      border-radius: 8px;
+      color: #123a67;
+      padding: 6px 10px;
+      font-size: 13px;
+      outline: none;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .status-top {
+      font-size: 12px;
+      color: #666;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
     .btn-small { padding: 4px 8px; font-size: 12px; border-radius: 6px; }
+    .status-top.err { color: #dc3545; font-weight: 500; }
 
 
     #completeForm .form-group { margin-bottom: 12px; }
@@ -471,14 +491,17 @@
   <div id="globalBlocker" style="position:fixed;top:0;left:0;width:100%;height:100%;z-index:9999;display:none;cursor:not-allowed;background:transparent;"></div>
 
   <header class="hero">
-    <div style="display: flex; align-items: center; gap: 16px;">
-      <h1 class="hero-title">SKS Factory</h1>
-      <button class="btn btn-primary" onclick="document.getElementById('excelUpload').click()" style="padding: 8px 16px; font-size: 13px;">
-      Upload Excel
-      </button>
-      <input type="file" id="excelUpload" style="display: none;" accept=".xlsx, .xls, .csv" onchange="handleFileUpload(event)">
+    <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+      <h1 class="hero-title" onclick="resetToToday()" style="cursor: pointer; font-size: 20px; flex-shrink: 0;">SKS Factory</h1>
+      <div class="header-actions" style="display: flex; align-items: center; gap: 12px;">
+        <div id="statusTop" class="status-top">Initializing...</div>
+        <input type="date" id="viewDatePicker" class="date-picker-input" onchange="loadData()">
+        <button class="btn btn-primary" onclick="showUploadDeptModal()" style="font-size: 13px; padding: 6px 12px;">
+          <i class="fas fa-file-excel"></i> Upload Excel
+        </button>
+      </div>
     </div>
-    <div id="statusTop" class="status-top">Initializing...</div>
+    <input type="file" id="excelUpload" style="display: none;" accept=".xlsx, .xls, .csv" onchange="handleFileUpload(event)">
   </header>
 
   <main class="content">
@@ -598,12 +621,50 @@
     </div>
   </div>
 
+  <!-- Dept Upload Modal -->
+  <div class="modal-overlay" id="uploadDeptModal">
+    <div class="modal-box">
+      <div class="modal-header">
+        <h3>Choose Department</h3>
+        <button class="modal-close" onclick="closeModal('uploadDeptModal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label>Select Department for Upload</label>
+          <select id="uploadDeptSelect">
+            <option value="Packing">Packing Department</option>
+            <option value="Cutting">Cutting Department (Later)</option>
+            <option value="Production">Production Department (Later)</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="closeModal('uploadDeptModal')">Cancel</button>
+        <button class="btn btn-primary" id="confirmUploadBtn" style="width:100%;" onclick="confirmUpload()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
   </main>
 
   <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby-unuUSovcTKqsbsEABZUOVNWxEEkuYM4lrSBY9lx-MpKigfpdFF-6bsKAh5HuDDgrSg/exec";
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw3RhyAjbbFU3MR-ZAGaLsrgwAztjaRJfoKpqRgHMuJCaESLxapK_JcZIEQs38Dy7P7Kg/exec";
     const statusEl = document.getElementById("statusTop");
     const deptContainer = document.getElementById("departmentsContainer");
+
+    window.onload = () => {
+      const dp = document.getElementById("viewDatePicker");
+      const istNow = new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+      dp.value = istNow.toISOString().split('T')[0];
+      loadData();
+    };
+
+    function resetToToday() {
+      const dp = document.getElementById("viewDatePicker");
+      const istNow = new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+      dp.value = istNow.toISOString().split('T')[0];
+      loadData();
+    }
 
     const COLUMNS = [
       { key: "Date", label: "Date", type: 'date' },
@@ -626,13 +687,14 @@
       statusEl.className = "status-top" + (isError ? " err" : "");
     }
 
-    function formatTime(val) {
-      if (!val) return "-";
-      try {
-        const d = new Date(val);
-        if (isNaN(d.getTime())) return val;
-        return d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
-      } catch (e) { return val; }
+    function formatDateOnly(date) {
+      if (!date) return "";
+      const d = new Date(date);
+      if (isNaN(d.getTime())) return "";
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`; // Standardized: DD-MM-YYYY
     }
 
     function formatDuration(val) {
@@ -652,15 +714,13 @@
       } catch (e) { return val; }
     }
 
-    function formatDateOnly(val) {
-      const d = parseSheetDate(val);
-      if (!d) return "-";
-      return new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Asia/Kolkata',
-        day: '2-digit',
-        month: '2-digit',
-        year: 'numeric'
-      }).format(d).replace(/\//g, '-');
+    function formatTime(val) {
+      if (!val) return "-";
+      try {
+        const d = new Date(val);
+        if (isNaN(d.getTime())) return val;
+        return d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true });
+      } catch (e) { return val; }
     }
 
     function getStatusClass(status) {
@@ -737,22 +797,21 @@
     function getISTDateKey(value) {
       const d = parseSheetDate(value);
       if (!d) return "";
-      // en-CA gives YYYY-MM-DD reliably
-      return new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-      }).format(d);
+      const day = String(d.getDate()).padStart(2, '0');
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const year = d.getFullYear();
+      return `${day}-${month}-${year}`; // Standardized: DD-MM-YYYY
     }
 
-    function filterTodayRows(data) {
-      const todayKey = new Intl.DateTimeFormat("en-CA", {
-        timeZone: "Asia/Kolkata",
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit"
-      }).format(new Date());
+    function filterBySelectedDate(data) {
+      const dp = document.getElementById("viewDatePicker");
+      let selectedKey = "";
+      if (dp && dp.value) {
+        const [y, m, d] = dp.value.split("-");
+        selectedKey = `${d}-${m}-${y}`;
+      } else {
+        selectedKey = getISTDateKey(new Date());
+      }
 
       const getRowDateRaw = (row) => {
         if (!row || typeof row !== "object") return null;
@@ -773,7 +832,7 @@
         result[sheetName] = rows.filter(row => {
           const raw = getRowDateRaw(row);
           const rowKey = getISTDateKey(raw);
-          return rowKey && rowKey === todayKey;
+          return rowKey && rowKey === selectedKey;
         });
       });
       return result;
@@ -784,7 +843,7 @@
       try {
         const res = await fetch(SCRIPT_URL);
         const data = await res.json();
-        const todayData = filterTodayRows(data);
+        const todayData = filterBySelectedDate(data);
         
         renderDashboard(todayData);
         setStatus('Updated: ' + new Date().toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true }), false);
@@ -874,9 +933,32 @@
       btn.textContent = "-";
     }
 
+    function showUploadDeptModal() {
+      document.getElementById("uploadDeptModal").classList.add("active");
+    }
+
+    function confirmUpload() {
+      const dept = document.getElementById("uploadDeptSelect").value;
+      if (dept === "Packing") {
+        closeModal("uploadDeptModal");
+        document.getElementById('excelUpload').click();
+      } else {
+        alert(dept + " Department upload is not yet implemented.");
+      }
+    }
+
     async function handleFileUpload(event) {
       const file = event.target.files[0];
       if (!file) return;
+
+      const fileInput = event.target;
+      const dept = document.getElementById("uploadDeptSelect").value;
+      
+      if (dept !== "Packing") {
+        alert("Please select Packing Department.");
+        fileInput.value = "";
+        return;
+      }
 
       setStatus('<span class="loading-spinner"></span> Parsing File...', false);
       const reader = new FileReader();
@@ -890,61 +972,64 @@
 
           if (jsonData.length === 0) {
             alert("No data found in File");
+            setStatus("No data found in file", true);
             return;
           }
 
           const toDate = (val, baseDate = null) => {
-             if (val instanceof Date) return val;
-             if (val === null || val === undefined || val === "") return null;
+            if (val instanceof Date) return val;
+            if (val === null || val === undefined || val === "") return null;
 
-             // Excel serial date/time (e.g. 0.41 for time-only, 45362 for full date)
-             if (typeof val === "number" && isFinite(val)) {
-               const excelEpoch = new Date(Date.UTC(1899, 11, 30));
-               return new Date(excelEpoch.getTime() + (val * 24 * 60 * 60 * 1000));
-             }
+            if (typeof val === "number" && isFinite(val)) {
+              const excelEpoch = new Date(Date.UTC(1899, 11, 30));
+              return new Date(excelEpoch.getTime() + (val * 24 * 60 * 60 * 1000));
+            }
 
-             if (typeof val === "string") {
-               const cleaned = val.trim();
-               if (!cleaned) return null;
+            if (typeof val === "string") {
+              const cleaned = val.trim();
+              if (!cleaned) return null;
 
-               // Time-only values like "9:44", "9:44 am"
-               const timeMatch = cleaned.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
-               if (timeMatch) {
-                 const base = baseDate instanceof Date && !isNaN(baseDate.getTime())
-                   ? new Date(baseDate)
-                   : new Date();
-                 let hour = parseInt(timeMatch[1], 10);
-                 const minute = parseInt(timeMatch[2], 10);
-                 const second = parseInt(timeMatch[3] || "0", 10);
-                 const ampm = (timeMatch[4] || "").toUpperCase();
+              const timeMatch = cleaned.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+              if (timeMatch) {
+                const base = baseDate instanceof Date && !isNaN(baseDate.getTime())
+                  ? new Date(baseDate)
+                  : new Date();
+                let hour = parseInt(timeMatch[1], 10);
+                const minute = parseInt(timeMatch[2], 10);
+                const second = parseInt(timeMatch[3] || "0", 10);
+                const ampm = (timeMatch[4] || "").toUpperCase();
 
-                 if (ampm === "PM" && hour < 12) hour += 12;
-                 if (ampm === "AM" && hour === 12) hour = 0;
+                if (ampm === "PM" && hour < 12) hour += 12;
+                if (ampm === "AM" && hour === 12) hour = 0;
 
-                 base.setHours(hour, minute, second, 0);
-                 return base;
-               }
-             }
+                base.setHours(hour, minute, second, 0);
+                return base;
+              }
+            }
 
-             const d = new Date(val);
-             return isNaN(d.getTime()) ? null : d;
-          };
-
-          const formatTimeExcel = (date) => {
-            if (!date) return "";
-            return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? null : d;
           };
 
           const findVal = (row, possibleKeys) => {
             const keys = Object.keys(row);
             for (const pk of possibleKeys) {
-               const match = keys.find(k => k.toLowerCase().trim() === pk.toLowerCase().trim() || k.toLowerCase().trim().includes(pk.toLowerCase().trim()));
-               if (match) return row[match];
+              const match = keys.find(k => k.toLowerCase().trim() === pk.toLowerCase().trim() || k.toLowerCase().trim().includes(pk.toLowerCase().trim()));
+              if (match) return row[match];
             }
             return null;
           };
 
-          // Process and group by Line
+          // Detect Production Date from the first valid row
+          let productionDateStr = "";
+          for (let i = 0; i < jsonData.length; i++) {
+            const d = toDate(findVal(jsonData[i], ["Date"]));
+            if (d) {
+              productionDateStr = getISTDateKey(d); // Standardized: DD-MM-YYYY
+              break;
+            }
+          }
+
           const groupedData = {};
           const allProducts = [];
 
@@ -1012,8 +1097,8 @@
             const achProduct = targetQty > 0 ? Math.round((actualQty / targetQty) * 100) : 0;
             const speedProduct = durMs > 0 ? (actualQty / (durMs / 60000)).toFixed(2) + " pcs/min" : "0";
 
-            // Products for separate sheet
             allProducts.push({
+              "Date": productionDateStr,
               "Line": line,
               "Product": findVal(row, ["Product Name", "Product", "Group"]) || "-",
               "Target": targetQty,
@@ -1028,7 +1113,6 @@
             });
           });
 
-          // Convert grouped regions to final summary payload
           const summaryEntries = Object.values(groupedData).map(g => {
             let incharge = "Madhu";
             if (g.line.includes("3") || g.line.includes("4")) incharge = "Vediyappan";
@@ -1043,6 +1127,7 @@
             const speed = totalDurationMins > 0 ? (g.totalOutput / totalDurationMins).toFixed(2) : 0;
 
             return {
+              Date: productionDateStr,
               SECTION: g.line,
               INCHARGE: incharge,
               STATUS: "Completed",
@@ -1057,7 +1142,6 @@
             };
           });
 
-          // Upload to Server
           setStatus('<span class="loading-spinner"></span> Updating Sheets...', false);
           const response = await fetch(SCRIPT_URL, {
             method: "POST",
@@ -1065,13 +1149,14 @@
               action: "upload_packing",
               department: "Packing Department",
               summaryEntries: summaryEntries,
-              productEntries: allProducts
+              productEntries: allProducts,
+              productionDate: productionDateStr
             })
           });
           
           const resJson = await response.json();
           if (resJson.success) {
-            setStatus("Data updated in both sheets", false);
+            setStatus("Data appended to sheets", false);
             await loadData();
           } else {
             throw new Error(resJson.error || "Upload failed");
@@ -1081,7 +1166,7 @@
           console.error(err);
           setStatus("Error processing: " + err.message, true);
         } finally {
-          event.target.value = ""; // reset input
+          fileInput.value = ""; 
         }
       };
       reader.readAsArrayBuffer(file);
@@ -1348,6 +1433,7 @@
         // Body
         const tbody = document.createElement("tbody");
         deptData.forEach(row => {
+          try {
             const tr = document.createElement("tr");
             
             const isPacking = deptName.toLowerCase().includes("packing");
@@ -1411,7 +1497,6 @@
                 td.appendChild(wrapper);
               } else {
                 if (col.type !== 'ach') {
-                    // Append units dynamically to Target, Output, and Speed
                     if (val !== "" && val !== "-") {
                         if (col.key === "TARGET" || col.key === "OUTPUT") {
                             val = val + unitStr;
@@ -1421,18 +1506,46 @@
                     }
                     td.textContent = val;
                 }
-                else td.textContent = val; // Already set for ach with %
+                else td.textContent = val;
               }
               
               tr.appendChild(td);
             });
             tbody.appendChild(tr);
-          });
-
+          } catch (err) { console.error("Error rendering row:", err); }
+        });
         table.appendChild(tbody);
+
+        // Footer for Totals
+        const tfoot = document.createElement("tfoot");
+        const footerRow = document.createElement("tr");
+        footerRow.style.background = "#f8fbff";
+        footerRow.style.fontWeight = "900";
+
+        const isPacking = deptName.toLowerCase().includes("packing");
+        const unitStr = isPacking ? " pcs" : " KG";
+
+        COLUMNS.forEach(col => {
+          const td = document.createElement("td");
+          if (col.key === "SECTION") {
+            td.textContent = "TOTAL";
+          } else if (col.key === "TARGET") {
+            td.textContent = deptTarget + unitStr;
+          } else if (col.key === "OUTPUT") {
+            td.textContent = deptOutput + unitStr;
+          } else if (col.key === "ACHIEVEMENT") {
+            td.className = "text-center " + getAchClass(ach);
+            td.textContent = ach + "%";
+          } else {
+            td.textContent = "";
+          }
+          footerRow.appendChild(td);
+        });
+        tfoot.appendChild(footerRow);
+        table.appendChild(tfoot);
+
         tableResp.appendChild(table);
         panel.appendChild(tableResp);
-        
         deptContainer.appendChild(panel);
       });
     }
