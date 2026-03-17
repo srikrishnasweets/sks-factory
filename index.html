@@ -7,7 +7,10 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
 
   <style>
     :root {
@@ -237,6 +240,74 @@
       display: flex;
       align-items: center;
       gap: 8px;
+    }
+
+    .panel-title-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    .section-title {
+      margin: 0;
+    }
+
+    .export-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .export-dropdown {
+      position: relative;
+    }
+
+    .export-trigger {
+      list-style: none;
+      user-select: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .export-dropdown summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .export-menu {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 6px);
+      min-width: 160px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      z-index: 20;
+    }
+
+    .export-menu button {
+      text-align: left;
+      border: none;
+      background: #fff;
+      border-radius: 6px;
+      padding: 8px 10px;
+      color: #123a67;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 12px;
+    }
+
+    .export-menu button:hover {
+      background: #f3f8ff;
     }
 
     /* Tables */
@@ -1433,10 +1504,29 @@
         const panel = document.createElement("div");
         panel.className = "panel";
 
+        const titleRow = document.createElement("div");
+        titleRow.className = "panel-title-row";
+
         const title = document.createElement("h2");
         title.className = "section-title";
         title.innerHTML = `${escapeHtml(deptName)}`;
-        panel.appendChild(title);
+        titleRow.appendChild(title);
+
+        const exportActions = document.createElement("div");
+        exportActions.className = "export-actions";
+
+        const exportDropdown = document.createElement("details");
+        exportDropdown.className = "export-dropdown";
+        exportDropdown.innerHTML = `
+          <summary class="btn btn-secondary btn-small export-trigger"><i class="bi bi-download"></i>Export</summary>
+          <div class="export-menu">
+            <button type="button" data-export="excel">Export as Excel</button>
+            <button type="button" data-export="pdf">Export as PDF</button>
+          </div>
+        `;
+        exportActions.appendChild(exportDropdown);
+        titleRow.appendChild(exportActions);
+        panel.appendChild(titleRow);
 
         const tableResp = document.createElement("div");
         tableResp.className = "table-responsive";
@@ -1582,7 +1672,116 @@
         tableResp.appendChild(table);
         panel.appendChild(tableResp);
         deptContainer.appendChild(panel);
+
+        const excelAction = exportDropdown.querySelector('[data-export="excel"]');
+        const pdfAction = exportDropdown.querySelector('[data-export="pdf"]');
+        excelAction.onclick = () => {
+          exportDepartmentExcel(deptName, table, deptData, data["Packing ProductWise"] || []);
+          exportDropdown.open = false;
+        };
+        pdfAction.onclick = () => {
+          exportDepartmentPdf(deptName, table, deptData, data["Packing ProductWise"] || []);
+          exportDropdown.open = false;
+        };
       });
+    }
+
+    function getPackingProductRows(deptData, productWiseData) {
+      const lineSet = new Set((deptData || []).map(r => String(getRowValue(r, "SECTION") || "").trim().toLowerCase().replace(/\s+/g, "")));
+      return (productWiseData || []).filter(p => lineSet.has(String(p.Line || "").trim().toLowerCase().replace(/\s+/g, "")));
+    }
+
+    function exportDepartmentExcel(deptName, tableEl, deptData = [], productWiseData = []) {
+      try {
+        const wb = XLSX.utils.book_new();
+        const summarySheet = XLSX.utils.table_to_sheet(tableEl);
+        XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+
+        const isPacking = String(deptName).toLowerCase().includes("packing");
+        if (isPacking) {
+          const detailRows = getPackingProductRows(deptData, productWiseData).map(p => ({
+            "Line": p.Line || "-",
+            "Product": p.Product || "-",
+            "Target": p.Target || 0,
+            "Output": p.Output || 0,
+            "Planned Duration": p["Planned Duration"] || "-",
+            "Actual Duration": p.Duration || "-",
+            "Speed": p.Speed || "-",
+            "Ideal Start": formatTime(p["Ideal Start"] || p["Planned Start"] || ""),
+            "Actual Start": formatTime(p["Actual Start"] || ""),
+            "Actual Completed": formatTime(p["Actual End"] || "")
+          }));
+          const detailsSheet = XLSX.utils.json_to_sheet(detailRows.length ? detailRows : [{ Line: "-", Product: "No individual product data found" }]);
+          XLSX.utils.book_append_sheet(wb, detailsSheet, "Product Details");
+        }
+
+        const fileName = `${deptName.replace(/[^\w\s-]/g, "").replace(/\s+/g, "_")}_Report.xlsx`;
+        XLSX.writeFile(wb, fileName);
+      } catch (err) {
+        console.error("Excel export failed:", err);
+        alert("Failed to export Excel.");
+      }
+    }
+
+    function exportDepartmentPdf(deptName, tableEl, deptData = [], productWiseData = []) {
+      try {
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ orientation: "landscape" });
+        doc.setFontSize(13);
+        doc.text(`${deptName} Report`, 14, 12);
+        doc.autoTable({
+          html: tableEl,
+          startY: 16,
+          styles: { fontSize: 8, cellPadding: 2 },
+          headStyles: { fillColor: [30, 111, 217] },
+          theme: "grid"
+        });
+
+        const isPacking = String(deptName).toLowerCase().includes("packing");
+        if (isPacking) {
+          const lineNames = [...new Set((deptData || []).map(r => String(getRowValue(r, "SECTION") || "").trim()).filter(Boolean))];
+          const normalizeLine = (v) => String(v || "").toLowerCase().replace(/\s+/g, "");
+          const detailsData = getPackingProductRows(deptData, productWiseData);
+
+          lineNames.forEach(line => {
+            const lineProducts = detailsData.filter(p => normalizeLine(p.Line) === normalizeLine(line));
+            const body = lineProducts.map(p => ([
+              p.Product || "-",
+              p.Target || 0,
+              p.Output || 0,
+              p["Planned Duration"] || "-",
+              p.Duration || "-",
+              p.Speed || "-",
+              formatTime(p["Ideal Start"] || p["Planned Start"] || ""),
+              formatTime(p["Actual Start"] || ""),
+              formatTime(p["Actual End"] || "")
+            ]));
+
+            doc.autoTable({
+              startY: (doc.lastAutoTable ? doc.lastAutoTable.finalY : 16) + 8,
+              head: [[`Line: ${line}`, "", "", "", "", "", "", "", ""]],
+              body: [],
+              theme: "plain",
+              styles: { fontStyle: "bold", fontSize: 10 }
+            });
+
+            doc.autoTable({
+              startY: doc.lastAutoTable.finalY + 2,
+              head: [["Product", "Target", "Output", "Planned Dur", "Actual Dur", "Speed", "Ideal Start", "Actual Start", "Actual Completed"]],
+              body: body.length ? body : [["No individual product data found", "", "", "", "", "", "", "", ""]],
+              styles: { fontSize: 8, cellPadding: 2 },
+              headStyles: { fillColor: [30, 111, 217] },
+              theme: "grid"
+            });
+          });
+        }
+
+        const fileName = `${deptName.replace(/[^\w\s-]/g, "").replace(/\s+/g, "_")}_Report.pdf`;
+        doc.save(fileName);
+      } catch (err) {
+        console.error("PDF export failed:", err);
+        alert("Failed to export PDF.");
+      }
     }
 
     // Auto-refresh every 15 minutes
