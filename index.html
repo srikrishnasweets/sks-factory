@@ -1110,6 +1110,30 @@
             return null;
           };
 
+          const parseDurationMinutes = (val) => {
+            if (val === null || val === undefined || val === "") return 0;
+            if (typeof val === "number" && isFinite(val)) {
+              return Math.max(0, Math.round(val * 24 * 60));
+            }
+            const s = String(val).trim();
+            if (!s) return 0;
+            const m = s.match(/^([+-])?\s*(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+            if (!m) return 0;
+            const sign = m[1] === "-" ? -1 : 1;
+            const hh = parseInt(m[2], 10) || 0;
+            const mm = parseInt(m[3], 10) || 0;
+            const ss = parseInt(m[4] || "0", 10) || 0;
+            const total = (hh * 60) + mm + Math.round(ss / 60);
+            return sign * total;
+          };
+
+          const formatDurationHM = (mins) => {
+            const safe = Math.max(0, Math.round(mins || 0));
+            const h = Math.floor(safe / 60);
+            const m = safe % 60;
+            return `${h}h ${m}m`;
+          };
+
           // Detect Production Date from the first valid row (standardized String)
           let productionDateStr = "";
           for (let i = 0; i < jsonData.length; i++) {
@@ -1132,7 +1156,6 @@
                 line: line,
                 totalTarget: 0,
                 totalOutput: 0,
-                totalDurationMs: 0,
                 totalPlannedDurationMins: 0,
                 minIdealStart: null,
                 minActualStart: null,
@@ -1146,48 +1169,16 @@
             const idealStart = toDate(findVal(row, ["Plan Start", "Planned Start"]), rowDate);
             const actualStart = toDate(findVal(row, ["Actual Start"]), rowDate);
             const actualEnd = toDate(findVal(row, ["Actual End"]), rowDate);
-            const durationVal = findVal(row, ["Actual Duration", "Duration"]);
-            const plannedDurationVal = findVal(row, ["Planned Duration (HH:MM)", "Planned Duration"]);
-
-            let durMs = 0;
-            let durationText = "";
-            if (typeof durationVal === "number" && isFinite(durationVal)) {
-              durMs = durationVal * 24 * 60 * 60 * 1000;
-            } else if (typeof durationVal === "string" && durationVal.trim()) {
-              const d = durationVal.trim();
-              const parts = d.split(":").map(p => parseInt(p, 10));
-              if (parts.length === 3 && parts.every(n => !isNaN(n))) {
-                durMs = ((parts[0] * 3600) + (parts[1] * 60) + parts[2]) * 1000;
-              } else if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-                durMs = ((parts[0] * 60) + parts[1]) * 60 * 1000;
-              }
-            } else if (actualStart && actualEnd) {
-              durMs = Math.max(0, actualEnd.getTime() - actualStart.getTime());
-            }
-
-            if (durMs > 0) {
-              const dh = Math.floor(durMs / 3600000);
-              const dm = Math.floor((durMs % 3600000) / 60000);
-              durationText = `${dh}:${String(dm).padStart(2, "0")}`;
-            } else if (typeof durationVal === "string" && durationVal.trim()) {
-              durationText = durationVal.trim();
-            }
-
-            // Extract Planned Duration
-            let plannedMins = 0;
-            if (typeof plannedDurationVal === "string" && plannedDurationVal.trim()) {
-              const p = plannedDurationVal.trim();
-              const parts = p.split(":").map(x => parseInt(x, 10));
-              if (parts.length >= 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-                plannedMins = (parts[0] * 60) + parts[1];
-              }
-            } else if (typeof plannedDurationVal === "number" && isFinite(plannedDurationVal)) {
-              plannedMins = Math.round(plannedDurationVal * 24 * 60);
-            }
+            const durationVal = findVal(row, ["Actual  Duration", "Actual Duration", "Duration"]);
+            const plannedDurationVal = findVal(row, ["Planned  Duration", "Planned Duration (HH:MM)", "Planned Duration"]);
+            const actualDurationMins = parseDurationMinutes(durationVal);
+            const plannedMins = parseDurationMinutes(plannedDurationVal);
+            const durMs = Math.max(0, actualDurationMins) * 60000;
+            const durationText = actualDurationMins > 0 ? formatDurationHM(actualDurationMins) : "";
+            const plannedDurationText = plannedMins > 0 ? formatDurationHM(plannedMins) : "";
 
             groupedData[line].totalTarget += targetQty;
             groupedData[line].totalOutput += actualQty;
-            groupedData[line].totalDurationMs += durMs;
             groupedData[line].totalPlannedDurationMins += plannedMins;
 
             if (idealStart && (!groupedData[line].minIdealStart || idealStart < groupedData[line].minIdealStart)) {
@@ -1216,7 +1207,7 @@
               "Achievement": achProduct,
               "Actual Start": actualStart ? actualStart.toISOString() : "",
               "Actual End": actualEnd ? actualEnd.toISOString() : "",
-              "Planned Duration": plannedMins > 0 ? (Math.floor(plannedMins / 60) + ":" + String(plannedMins % 60).padStart(2, "0")) : ""
+              "Planned Duration": plannedDurationText
             });
           });
 
@@ -1224,15 +1215,11 @@
             let incharge = "Madhu";
             if (g.line.includes("3") || g.line.includes("4")) incharge = "Vediyappan";
 
-            const totalDurationMs = g.totalDurationMs;
-            const h = Math.floor(totalDurationMs / 3600000);
-            const m = Math.floor((totalDurationMs % 3600000) / 60000);
-            const durationStr = h + "h " + m + "m";
-            const totalDurationMins = totalDurationMs / 60000;
-
-            const plannedH = Math.floor(g.totalPlannedDurationMins / 60);
-            const plannedM = g.totalPlannedDurationMins % 60;
-            const plannedStr = plannedH + "h " + plannedM + "m";
+            const totalDurationMins = (g.minActualStart && g.maxActualEnd)
+              ? Math.max(0, Math.round((g.maxActualEnd.getTime() - g.minActualStart.getTime()) / 60000))
+              : 0;
+            const durationStr = formatDurationHM(totalDurationMins);
+            const plannedStr = formatDurationHM(g.totalPlannedDurationMins);
 
             const ach = g.totalTarget > 0 ? (g.totalOutput / g.totalTarget) * 100 : 0;
             const speed = totalDurationMins > 0 ? (g.totalOutput / totalDurationMins).toFixed(2) : 0;
@@ -1459,11 +1446,42 @@
 
       iterationList.forEach(deptName => {
         const deptData = data[deptName] || [];
+        const isPackingDept = deptName.toLowerCase().includes("packing");
+        const packingProductRows = isPackingDept ? getPackingProductRows(deptData, data["Packing ProductWise"] || []) : [];
+        const normalizeLineKey = (v) => String(v || "").trim().toLowerCase().replace(/\s+/g, "");
+        const packingLineSpanMap = {};
+        let packingDeptMinStart = null;
+        let packingDeptMaxEnd = null;
+        if (isPackingDept) {
+          packingProductRows.forEach(p => {
+            const lineKey = normalizeLineKey(p.Line);
+            if (!lineKey) return;
+            const startDt = parseSheetDate(p["Actual Start"]);
+            const endDt = parseSheetDate(p["Actual End"]);
+            if (!packingLineSpanMap[lineKey]) {
+              packingLineSpanMap[lineKey] = { minStart: null, maxEnd: null };
+            }
+            if (startDt && (!packingLineSpanMap[lineKey].minStart || startDt < packingLineSpanMap[lineKey].minStart)) {
+              packingLineSpanMap[lineKey].minStart = startDt;
+            }
+            if (endDt && (!packingLineSpanMap[lineKey].maxEnd || endDt > packingLineSpanMap[lineKey].maxEnd)) {
+              packingLineSpanMap[lineKey].maxEnd = endDt;
+            }
+            if (startDt && (!packingDeptMinStart || startDt < packingDeptMinStart)) {
+              packingDeptMinStart = startDt;
+            }
+            if (endDt && (!packingDeptMaxEnd || endDt > packingDeptMaxEnd)) {
+              packingDeptMaxEnd = endDt;
+            }
+          });
+        }
         
         let deptTarget = 0;
         let deptOutput = 0;
         let deptPlannedMins = 0;
         let deptActualMins = 0;
+        let deptMinActualStart = null;
+        let deptMaxCompletedAt = null;
         let unit = "";
         let avgSpeed = 0;
         let speedUnit = "";
@@ -1485,6 +1503,22 @@
           if (adMatch) {
             deptActualMins += (parseInt(adMatch[1]) * 60) + parseInt(adMatch[2]);
           }
+
+          const rowLineKey = normalizeLineKey(getRowValue(row, "SECTION"));
+          const spanFromProducts = rowLineKey ? packingLineSpanMap[rowLineKey] : null;
+          const actualStartRaw = spanFromProducts?.minStart || getRowValue(row, "ACTUAL START") || getRowValue(row, "Actual Start");
+          const completedRaw = spanFromProducts?.maxEnd ||
+            getRowValue(row, "COMPLETED AT") ||
+            getRowValue(row, "Actual End") ||
+            getRowValue(row, "ACTUAL END");
+          const actualStartDt = parseSheetDate(actualStartRaw);
+          const completedDt = parseSheetDate(completedRaw);
+          if (actualStartDt && (!deptMinActualStart || actualStartDt < deptMinActualStart)) {
+            deptMinActualStart = actualStartDt;
+          }
+          if (completedDt && (!deptMaxCompletedAt || completedDt > deptMaxCompletedAt)) {
+            deptMaxCompletedAt = completedDt;
+          }
           
           if(!unit && typeof row.OUTPUT === 'string') {
               const uMatch = row.OUTPUT.match(/[a-zA-Z]+/g);
@@ -1492,7 +1526,6 @@
           }
 
           if (row.SPEED && row.SPEED !== "-") {
-            avgSpeed = parseFloat(row.SPEED);
             if(typeof row.SPEED === 'string') {
               const sMatch = row.SPEED.match(/[a-zA-Z\/]+/g);
               if (sMatch) speedUnit = sMatch[sMatch.length - 1]; // e.g. kg/hr
@@ -1500,10 +1533,19 @@
           }
         });
         
-        // Simple heuristic for speed unit if missing
-        if (!speedUnit) {
-          if (unit.toLowerCase().includes("pc")) speedUnit = "pcs/min";
-          else if (unit.toLowerCase().includes("kg")) speedUnit = "kg/hr";
+        const totalMinsForAvg = (isPackingDept && packingDeptMinStart && packingDeptMaxEnd)
+          ? Math.max(0, Math.round((packingDeptMaxEnd.getTime() - packingDeptMinStart.getTime()) / 60000))
+          : (deptMinActualStart && deptMaxCompletedAt)
+          ? Math.max(0, Math.round((deptMaxCompletedAt.getTime() - deptMinActualStart.getTime()) / 60000))
+          : deptActualMins;
+
+        if (isPackingDept) {
+          avgSpeed = totalMinsForAvg > 0 ? (deptOutput / totalMinsForAvg) : 0;
+          speedUnit = "pcs/min";
+        } else {
+          const totalHoursForAvg = totalMinsForAvg / 60;
+          avgSpeed = totalHoursForAvg > 0 ? (deptOutput / totalHoursForAvg) : 0;
+          speedUnit = "kg/hr";
         }
 
         const ach = deptTarget > 0 ? Math.round((deptOutput / deptTarget) * 100) : 0;
@@ -1517,7 +1559,7 @@
         topCard.innerHTML = `
           <div class="dark-card-title">${shortName} Today</div>
           <div class="dark-card-value">${deptOutput} ${unit}</div>
-          <div class="dark-card-sub">Avg ${avgSpeed || '-'} ${speedUnit}</div>
+          <div class="dark-card-sub">Avg ${Number.isFinite(avgSpeed) && avgSpeed > 0 ? avgSpeed.toFixed(2) : '-'} ${speedUnit}</div>
         `;
         row1.appendChild(topCard);
 
@@ -1586,7 +1628,6 @@
             const isPacking = deptName.toLowerCase().includes("packing");
             const unitStr = isPacking ? " pcs" : " KG";
             const speedUnitStr = isPacking ? " pcs/min" : " kg/hr";
-            
             COLUMNS.forEach(col => {
               const td = document.createElement("td");
               let val = getRowValue(row, col.key);
@@ -1687,8 +1728,13 @@
             const m = deptPlannedMins % 60;
             td.textContent = h > 0 || m > 0 ? (h + "h " + m + "m") : "-";
           } else if (col.key === "DURATION") {
-            const h = Math.floor(deptActualMins / 60);
-            const m = deptActualMins % 60;
+            const totalMinsFromSpan = (isPackingDept && packingDeptMinStart && packingDeptMaxEnd)
+              ? Math.max(0, Math.round((packingDeptMaxEnd.getTime() - packingDeptMinStart.getTime()) / 60000))
+              : (deptMinActualStart && deptMaxCompletedAt)
+              ? Math.max(0, Math.round((deptMaxCompletedAt.getTime() - deptMinActualStart.getTime()) / 60000))
+              : deptActualMins;
+            const h = Math.floor(totalMinsFromSpan / 60);
+            const m = totalMinsFromSpan % 60;
             td.textContent = h > 0 || m > 0 ? (h + "h " + m + "m") : "-";
           } else if (col.key === "ACHIEVEMENT") {
             td.className = "text-center " + getAchClass(ach);
