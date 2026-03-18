@@ -38,6 +38,7 @@
       --card-late-bg: #fff1f2;
       --card-late-border: #ef4444;
       --card-late-text: #7f1d1d;
+      --desktop-ui-scale: 0.67;
     }
 
     * { box-sizing: border-box; }
@@ -52,6 +53,11 @@
         linear-gradient(125deg, var(--bg-1), var(--bg-2));
       min-height: 100dvh;
       padding-bottom: 40px;
+    }
+
+    /* Match the visual density you currently get at ~67% Chrome zoom */
+    @media (min-width: 1024px) {
+      body { zoom: var(--desktop-ui-scale); }
     }
 
     .hero {
@@ -94,7 +100,6 @@
 
     .content {
       padding: 24px;
-      max-width: 1400px;
       margin: 0 auto;
       display: flex;
       flex-direction: column;
@@ -141,6 +146,7 @@
 
     /* Mobile specifics to keep 3 cards per row */
     @media (max-width: 768px) {
+      body { zoom: 1; }
       .content { padding: 12px; }
       .row-cards { gap: 6px; }
       .dark-card {
@@ -487,11 +493,16 @@
       border: 1px solid #dceeff;
       border-radius: 8px;
       color: #123a67;
-      padding: 6px 10px;
-      font-size: 13px;
+      padding: 10px 14px;
+      font-size: 15px;
       outline: none;
       cursor: pointer;
       font-family: inherit;
+    }
+    .hero .btn {
+      font-size: 15px;
+      padding: 10px 16px;
+      border-radius: 10px;
     }
     .status-top {
       font-size: 12px;
@@ -567,7 +578,7 @@
       <div class="header-actions" style="display: flex; align-items: center; gap: 12px;">
         <div id="statusTop" class="status-top">Initializing...</div>
         <input type="date" id="viewDatePicker" class="date-picker-input" onchange="loadData()">
-        <button class="btn btn-primary" onclick="showUploadDeptModal()" style="font-size: 13px; padding: 6px 12px;">
+        <button class="btn btn-primary" onclick="showUploadDeptModal()">
           <i class="fas fa-file-excel"></i> Upload Excel
         </button>
       </div>
@@ -1026,7 +1037,11 @@
           const workbook = XLSX.read(data, { type: 'array', cellDates: true });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+          // Updated packing format: header row starts at row 4 (skip first 3 rows).
+          const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+            range: 3,
+            defval: ""
+          });
 
           if (jsonData.length === 0) {
             alert("No data found in File");
@@ -1039,6 +1054,15 @@
             if (val === null || val === undefined || val === "") return null;
 
             if (typeof val === "number" && isFinite(val)) {
+              if (baseDate instanceof Date && !isNaN(baseDate.getTime()) && val >= 0 && val < 1) {
+                const totalSeconds = Math.round(val * 24 * 60 * 60);
+                const hh = Math.floor(totalSeconds / 3600) % 24;
+                const mm = Math.floor((totalSeconds % 3600) / 60);
+                const ss = totalSeconds % 60;
+                const withBaseDate = new Date(baseDate);
+                withBaseDate.setHours(hh, mm, ss, 0);
+                return withBaseDate;
+              }
               const excelEpoch = new Date(Date.UTC(1899, 11, 30));
               return new Date(excelEpoch.getTime() + (val * 24 * 60 * 60 * 1000));
             }
@@ -1069,11 +1093,19 @@
             return isNaN(d.getTime()) ? null : d;
           };
 
+          const normalizeHeader = (v) => String(v || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
           const findVal = (row, possibleKeys) => {
             const keys = Object.keys(row);
+            const normalizedKeys = keys.map(k => ({ key: k, n: normalizeHeader(k) }));
             for (const pk of possibleKeys) {
-              const match = keys.find(k => k.toLowerCase().trim() === pk.toLowerCase().trim() || k.toLowerCase().trim().includes(pk.toLowerCase().trim()));
-              if (match) return row[match];
+              const wanted = normalizeHeader(pk);
+              const exact = normalizedKeys.find(item => item.n === wanted);
+              if (exact) return row[exact.key];
+              const partial = normalizedKeys.find(item => item.n.includes(wanted));
+              const reversePartial = normalizedKeys.find(item => wanted.includes(item.n));
+              const match = partial || reversePartial;
+              if (match) return row[match.key];
             }
             return null;
           };
