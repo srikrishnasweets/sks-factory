@@ -608,17 +608,13 @@
   <div class="modal-overlay" id="entryModal">
     <div class="modal-box">
       <div class="modal-header">
-        <h3>New Entry</h3>
+        <h3>Production Entry</h3>
         <button class="modal-close" onclick="closeModal('entryModal')">&times;</button>
       </div>
       <div class="modal-body">
         <div class="form-group">
-          <label>Department</label>
-          <select id="deptSelect" onchange="updateDropdowns()">
-            <option value="Cutting Department">Cutting Department</option>
-            <option value="Production Department">Production Department</option>
-            <option value="Packing Department">Packing Department</option>
-          </select>
+          <label>Date</label>
+          <input type="date" id="entryDateInput">
         </div>
         <div class="form-group">
           <label>Section</label>
@@ -629,47 +625,24 @@
           <select id="inchargeSelect"></select>
         </div>
         <div class="form-group">
-          <label>Ideal Start (AM/PM)</label>
-          <div style="display: flex; gap: 8px;">
-            <select id="idealStartHour" style="flex: 1;">
-              <option value="" disabled selected>HH</option>
-              <option value="01">01</option>
-              <option value="02">02</option>
-              <option value="03">03</option>
-              <option value="04">04</option>
-              <option value="05">05</option>
-              <option value="06">06</option>
-              <option value="07">07</option>
-              <option value="08">08</option>
-              <option value="09">09</option>
-              <option value="10">10</option>
-              <option value="11">11</option>
-              <option value="12">12</option>
-            </select>
-            <select id="idealStartMinute" style="flex: 1;">
-              <option value="" disabled selected>MM</option>
-              <option value="00">00</option>
-              <option value="05">05</option>
-              <option value="10">10</option>
-              <option value="15">15</option>
-              <option value="20">20</option>
-              <option value="25">25</option>
-              <option value="30">30</option>
-              <option value="35">35</option>
-              <option value="40">40</option>
-              <option value="45">45</option>
-              <option value="50">50</option>
-              <option value="55">55</option>
-            </select>
-            <select id="idealStartAmPm" style="flex: 1;">
-              <option value="AM">AM</option>
-              <option value="PM">PM</option>
-            </select>
-          </div>
+          <label>Staff</label>
+          <input type="number" id="entryStaffInput" placeholder="Enter number of staff" min="1">
+        </div>
+        <div class="form-group">
+          <label>Start At</label>
+          <input type="time" id="startAtInput">
+        </div>
+        <div class="form-group">
+          <label>Completed At</label>
+          <input type="time" id="completedAtInput">
         </div>
         <div class="form-group">
           <label>Target</label>
-          <input type="number" id="targetInput" placeholder="Enter target">
+          <input type="number" id="targetInput" placeholder="Enter target" min="0">
+        </div>
+        <div class="form-group">
+          <label>Output</label>
+          <input type="number" id="entryOutputInput" placeholder="Enter output" min="0">
         </div>
       </div>
       <div class="modal-footer">
@@ -683,17 +656,17 @@
   <div class="modal-overlay" id="completeModal">
     <div class="modal-box">
       <div class="modal-header">
-        <h3>Complete Job</h3>
+        <h3>Complete</h3>
         <button class="modal-close" onclick="closeModal('completeModal')">&times;</button>
       </div>
       <div class="modal-body" id="completeForm">
-        <div class="form-group">
-          <label>Staff</label>
-          <input type="number" id="staffInput" placeholder="Enter number of staff">
+        <div class="form-group" id="completeTimeGroup">
+          <label>Completed Time</label>
+          <input type="time" id="completeTimeInput">
         </div>
-        <div class="form-group">
+        <div class="form-group" id="completeOutputGroup" style="display:none;">
           <label>Output</label>
-          <input type="number" id="outputInput" placeholder="Enter output amount">
+          <input type="number" id="completeOutputInput" placeholder="Enter output" min="0">
         </div>
       </div>
       <div class="modal-footer">
@@ -754,10 +727,8 @@
       { key: "INCHARGE", label: "Incharge" },
       { key: "STAFF", label: "Staff" },
       { key: "STATUS", label: "Status" },
-      { key: "IDEAL START", label: "Ideal Start", type: 'time' },
       { key: "ACTUAL START", label: "Actual Start", type: 'time' },
       { key: "COMPLETED AT", label: "Completed At", type: 'time' },
-      { key: "PLANNED DURATION", label: "Planned Duration", type: 'planned_duration' },
       { key: "DURATION", label: "Duration", type: 'duration' },
       { key: "TARGET", label: "Target" },
       { key: "OUTPUT", label: "Output" },
@@ -969,26 +940,23 @@
       
       let html = '<div class="details-container">';
       html += '<table class="details-table">';
-      html += '<thead><tr><th>Product</th><th>Target</th><th>Output</th><th>Planned Dur</th><th>Actual Dur</th><th>Speed</th><th>Ach%</th><th>Ideal Start</th><th>Actual Start</th><th>Actual Completed</th></tr></thead>';
+      html += '<thead><tr><th>Product</th><th>Target</th><th>Output</th><th>Actual Dur</th><th>Speed</th><th>Ach%</th><th>Actual Start</th><th>Actual Completed</th></tr></thead>';
       html += '<tbody>';
       
       if (products.length === 0) {
-        html += '<tr><td colspan="10">No individual product data found</td></tr>';
+        html += '<tr><td colspan="8">No individual product data found</td></tr>';
       } else {
         products.forEach(p => {
           const target = normalizeQty(p.Target);
           const output = normalizeQty(p.Output);
           const ach = target > 0 ? Math.round((output / target) * 100) : 0;
-          const idealStartVal = p["Ideal Start"] || p["Planned Start"] || "";
           html += `<tr>
             <td>${escapeHtml(p.Product)}</td>
             <td>${target} pcs</td>
             <td>${output} pcs</td>
-            <td>${escapeHtml(p["Planned Duration"] || "-")}</td>
             <td>${escapeHtml(p.Duration || "-")}</td>
             <td>${p.Speed || "-"}</td>
             <td>${ach}%</td>
-            <td>${formatTime(idealStartVal)}</td> 
             <td>${formatTime(p["Actual Start"])}</td>
             <td>${formatTime(p["Actual End"])}</td>
           </tr>`;
@@ -1283,8 +1251,7 @@
     };
 
     function updateDropdowns() {
-      const dept = document.getElementById("deptSelect").value;
-      const type = dept.includes("Packing") ? "packing" : "production";
+      const type = "production";
       
       const secSel = document.getElementById("sectionSelect");
       secSel.innerHTML = sectionsMaster[type].map(s => `<option value="${s}">${s}</option>`).join("");
@@ -1295,10 +1262,13 @@
 
     function openEntryModal() {
       updateDropdowns();
-      document.getElementById("idealStartHour").value = "";
-      document.getElementById("idealStartMinute").value = "";
-      document.getElementById("idealStartAmPm").value = "AM";
+      const istNow = new Date(new Date().getTime() + (5.5 * 60 * 60 * 1000));
+      document.getElementById("entryDateInput").value = istNow.toISOString().split('T')[0];
+      document.getElementById("entryStaffInput").value = "";
+      document.getElementById("startAtInput").value = "";
+      document.getElementById("completedAtInput").value = "";
       document.getElementById("targetInput").value = "";
+      document.getElementById("entryOutputInput").value = "";
       document.getElementById("entryModal").classList.add("active");
     }
 
@@ -1306,28 +1276,68 @@
       document.getElementById(id).classList.remove("active");
     }
 
-    async function submitNewEntry(btn) {
-      const h = document.getElementById("idealStartHour").value;
-      const m = document.getElementById("idealStartMinute").value;
-      const ampm = document.getElementById("idealStartAmPm").value;
+    function formatDateTimeForSheetFromDateAndTime(dateValue, timeValue) {
+      if (!timeValue) return "";
+      const parts = String(timeValue).split(":");
+      if (parts.length < 2) return "";
+      const hours = parseInt(parts[0], 10);
+      const minutes = parseInt(parts[1], 10);
+      if (isNaN(hours) || isNaN(minutes)) return "";
 
-      if (!h || !m) {
-        alert("Please set the Ideal Start time properly (HH and MM).");
-        return;
+      let baseDate = null;
+      const raw = String(dateValue || "").trim();
+      const ddmmyyyy = raw.match(/^(\d{1,2})-(\d{1,2})-(\d{4})$/);
+      if (ddmmyyyy) {
+        baseDate = new Date(parseInt(ddmmyyyy[3], 10), parseInt(ddmmyyyy[2], 10) - 1, parseInt(ddmmyyyy[1], 10));
+      } else if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        const dParts = raw.split("-");
+        baseDate = new Date(parseInt(dParts[0], 10), parseInt(dParts[1], 10) - 1, parseInt(dParts[2], 10));
+      } else if (raw) {
+        const parsed = new Date(raw);
+        if (!isNaN(parsed.getTime())) baseDate = parsed;
       }
-      
-      const idealStartFormatted = `${h}:${m} ${ampm}`;
+      if (!baseDate) baseDate = new Date();
+
+      const dt = new Date(baseDate.getFullYear(), baseDate.getMonth(), baseDate.getDate(), hours, minutes, 0, 0);
+      if (isNaN(dt.getTime())) return "";
+
+      const mm = String(dt.getMonth() + 1).padStart(2, "0");
+      const dd = String(dt.getDate()).padStart(2, "0");
+      const yyyy = dt.getFullYear();
+      let hh = dt.getHours();
+      const ampm = hh >= 12 ? "PM" : "AM";
+      hh = hh % 12;
+      if (hh === 0) hh = 12;
+      const hhStr = String(hh).padStart(2, "0");
+      const minStr = String(dt.getMinutes()).padStart(2, "0");
+      return `${mm}/${dd}/${yyyy} ${hhStr}:${minStr} ${ampm}`;
+    }
+
+    async function submitNewEntry(btn) {
+      const entryDate = document.getElementById("entryDateInput").value;
+      const section = document.getElementById("sectionSelect").value;
+      const incharge = document.getElementById("inchargeSelect").value;
+      const staff = document.getElementById("entryStaffInput").value;
+      const startAt = document.getElementById("startAtInput").value;
+      const completedAt = document.getElementById("completedAtInput").value;
+      const target = document.getElementById("targetInput").value;
+      const output = document.getElementById("entryOutputInput").value;
 
       const payload = {
         action: "create",
-        department: document.getElementById("deptSelect").value,
-        section: document.getElementById("sectionSelect").value,
-        incharge: document.getElementById("inchargeSelect").value,
-        idealStart: idealStartFormatted,
-        target: document.getElementById("targetInput").value
+        department: "Production Department",
+        date: entryDate,
+        section: section,
+        incharge: incharge,
+        staff: staff,
+        startAt: startAt,
+        completedAt: completedAt,
+        target: target,
+        output: output,
+        status: completedAt ? "Completed" : "Running"
       };
       
-      if(!payload.target || !payload.idealStart) {
+      if(!payload.date || !payload.section || !payload.incharge || !payload.staff || !payload.startAt || !payload.target) {
         alert("Please fill all fields");
         return;
       }
@@ -1380,21 +1390,41 @@
           document.getElementById('globalBlocker').style.display = 'none';
         }
       } else if (currentStatus === "Running") {
-        actionRowData = { deptName, rowIndex };
-        document.getElementById("staffInput").value = "";
-        document.getElementById("outputInput").value = "";
+        actionRowData = {
+          deptName,
+          rowIndex,
+          rowDate: document.getElementById("viewDatePicker").value,
+          existingOutput: "",
+          existingCompletedAt: ""
+        };
+        document.getElementById("completeTimeInput").value = "";
+        document.getElementById("completeOutputInput").value = "";
+        document.getElementById("completeTimeGroup").style.display = "block";
+        document.getElementById("completeOutputGroup").style.display = "block";
         document.getElementById("completeModal").classList.add("active");
       }
     }
     
     async function submitComplete(btn) {
       if (!actionRowData) return;
-      const staff = document.getElementById("staffInput").value;
-      const output = document.getElementById("outputInput").value;
-      if (!output || !staff) {
-        alert("Please enter both staff and output");
+      const completedTime = document.getElementById("completeTimeInput").value;
+      const needsCompletedAt = !(actionRowData.existingCompletedAt !== null && actionRowData.existingCompletedAt !== undefined && String(actionRowData.existingCompletedAt).trim() !== "" && String(actionRowData.existingCompletedAt).trim() !== "-");
+      if (needsCompletedAt && !completedTime) {
+        alert("Please enter completed time");
         return;
       }
+      const needsOutput = !(actionRowData.existingOutput !== null && actionRowData.existingOutput !== undefined && String(actionRowData.existingOutput).trim() !== "");
+      const completeOutputVal = document.getElementById("completeOutputInput").value;
+      if (needsOutput && (completeOutputVal === null || String(completeOutputVal).trim() === "")) {
+        alert("Please enter output");
+        return;
+      }
+      const completedAt = needsCompletedAt
+        ? formatDateTimeForSheetFromDateAndTime(actionRowData.rowDate, completedTime)
+        : actionRowData.existingCompletedAt;
+      const updates = { "STATUS": "Completed" };
+      if (needsCompletedAt) updates["COMPLETED AT"] = completedAt;
+      if (needsOutput) updates["OUTPUT"] = completeOutputVal;
       
       btn.disabled = true;
       const originalText = btn.innerHTML;
@@ -1409,7 +1439,7 @@
             action: "update",
             department: actionRowData.deptName,
             rowIndex: actionRowData.rowIndex,
-            updates: { "STATUS": "Completed", "STAFF": staff, "OUTPUT": output }
+            updates: updates
           })
         });
         closeModal("completeModal");
@@ -1629,7 +1659,9 @@
             const speedUnitStr = isPacking ? " pcs/min" : " kg/hr";
             COLUMNS.forEach(col => {
               const td = document.createElement("td");
-              let val = getRowValue(row, col.key);
+              const rawVal = getRowValue(row, col.key);
+              let val = rawVal;
+              const rowStatus = String(getRowValue(row, "STATUS") || "");
               
               if (col.type === 'time') {
                 val = formatTime(val);
@@ -1675,15 +1707,45 @@
                 badge.textContent = val;
                 wrapper.appendChild(badge);
                 
-                if (val === "Not Started" || val === "Running") {
+                if (val === "Not Started") {
                     const btn = document.createElement("button");
                     btn.className = "btn btn-primary btn-small";
-                    btn.textContent = val === "Not Started" ? "Start" : "Complete";
+                    btn.textContent = "Start";
                     btn.onclick = (e) => setStatusRow(e.target, deptName, row._rowIndex, val);
                     wrapper.appendChild(btn);
                 }
                 
                 td.appendChild(wrapper);
+              } else if (col.key === "COMPLETED AT") {
+                const isCompletedAtMissing = rawVal === null || rawVal === undefined || String(rawVal).trim() === "" || String(rawVal).trim() === "-";
+                const outputRaw = getRowValue(row, "OUTPUT");
+                const isOutputMissing = outputRaw === null || outputRaw === undefined || String(outputRaw).trim() === "" || String(outputRaw).trim() === "-";
+                if (isCompletedAtMissing || isOutputMissing) {
+                  const btn = document.createElement("button");
+                  btn.className = "btn btn-primary btn-small";
+                  btn.textContent = "Complete";
+                  btn.onclick = () => {
+                    const existingOutput = getRowValue(row, "OUTPUT");
+                    const existingCompletedAt = getRowValue(row, "COMPLETED AT");
+                    const needsOutput = !(existingOutput !== null && existingOutput !== undefined && String(existingOutput).trim() !== "");
+                    const needsCompletedAt = !(existingCompletedAt !== null && existingCompletedAt !== undefined && String(existingCompletedAt).trim() !== "" && String(existingCompletedAt).trim() !== "-");
+                    actionRowData = {
+                      deptName,
+                      rowIndex: row._rowIndex,
+                      rowDate: getRowValue(row, "Date") || getRowValue(row, "DATE") || document.getElementById("viewDatePicker").value,
+                      existingOutput: existingOutput,
+                      existingCompletedAt: existingCompletedAt
+                    };
+                    document.getElementById("completeTimeInput").value = "";
+                    document.getElementById("completeOutputInput").value = "";
+                    document.getElementById("completeTimeGroup").style.display = needsCompletedAt ? "block" : "none";
+                    document.getElementById("completeOutputGroup").style.display = needsOutput ? "block" : "none";
+                    document.getElementById("completeModal").classList.add("active");
+                  };
+                  td.appendChild(btn);
+                } else {
+                  td.textContent = val;
+                }
               } else {
                 if (col.type !== 'ach') {
                     if (val !== "" && val !== "-") {
