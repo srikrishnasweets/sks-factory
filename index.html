@@ -774,6 +774,13 @@
       return match ? parseFloat(match[0]) : 0;
     }
 
+    function formatMetricNumber(value, maxDecimals = 2) {
+      const num = Number(value);
+      if (!isFinite(num)) return "0";
+      const rounded = Math.round((num + Number.EPSILON) * Math.pow(10, maxDecimals)) / Math.pow(10, maxDecimals);
+      return rounded.toFixed(maxDecimals).replace(/\.?0+$/, "");
+    }
+
     function escapeHtml(v) {
       return String(v == null ? "" : v)
         .replace(/&/g, "&amp;").replace(/</g, "&lt;")
@@ -1563,7 +1570,7 @@
         topCard.className = "dark-card";
         topCard.innerHTML = `
           <div class="dark-card-title">${shortName} Today</div>
-          <div class="dark-card-value">${deptOutput} ${unit}</div>
+          <div class="dark-card-value">${formatMetricNumber(deptOutput)} ${unit}</div>
         `;
         row1.appendChild(topCard);
 
@@ -1572,8 +1579,8 @@
         scoreCard.className = "dark-card left-align";
         scoreCard.innerHTML = `
           <div class="dark-card-title" style="font-size: 16px; margin-bottom: 12px;">${shortName} Dept Score</div>
-          <div class="dark-card-metric"><span class="label">Output :</span> ${deptOutput} ${unit}</div>
-          <div class="dark-card-metric"><span class="label">Target :</span> ${deptTarget} ${unit}</div>
+          <div class="dark-card-metric"><span class="label">Output :</span> ${formatMetricNumber(deptOutput)} ${unit}</div>
+          <div class="dark-card-metric"><span class="label">Target :</span> ${formatMetricNumber(deptTarget)} ${unit}</div>
           <div class="dark-card-metric" style="margin-top: 2px;"><span class="label">Efficiency :</span> <span class="${getAchClass(ach)}">${ach}%</span></div>
         `;
         row2.appendChild(scoreCard);
@@ -1733,7 +1740,7 @@
                 if (col.type !== 'ach') {
                     if (val !== "" && val !== "-") {
                         if (col.key === "TARGET" || col.key === "OUTPUT") {
-                            val = val + unitStr;
+                            val = formatMetricNumber(val) + unitStr;
                         } else if (col.key === "SPEED") {
                             val = val + speedUnitStr;
                         }
@@ -1764,9 +1771,9 @@
           if (col.key === "SECTION") {
             td.textContent = "TOTAL";
           } else if (col.key === "TARGET") {
-            td.textContent = deptTarget + unitStr;
+            td.textContent = formatMetricNumber(deptTarget) + unitStr;
           } else if (col.key === "OUTPUT") {
-            td.textContent = deptOutput + unitStr;
+            td.textContent = formatMetricNumber(deptOutput) + unitStr;
           } else if (col.key === "PLANNED DURATION") {
             const h = Math.floor(deptPlannedMins / 60);
             const m = deptPlannedMins % 60;
